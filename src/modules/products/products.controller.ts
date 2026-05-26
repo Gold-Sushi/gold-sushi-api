@@ -1,3 +1,7 @@
+import { JwtAuthGuard } from '@common/auth/jwt-auth.guard';
+import { Roles } from '@common/decorators/roles.decorator';
+import { UserRole } from '@common/enums/UserRole';
+import { RolesGuard } from '@common/guards/roles.guard';
 import { CreateProductDto } from '@modules/products/dto/create-product.dto';
 import { UpdateProductDto } from '@modules/products/dto/update-product.dto';
 import { ProductStatus } from '@modules/products/entities/product.entity';
@@ -10,6 +14,7 @@ import {
   Patch,
   Post, Query,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -25,6 +30,8 @@ export class ProductsController {
   ) {}
 
   @Post('create')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
   @UseInterceptors(FileInterceptor('image'))
   async create(
     @Body() body: CreateProductDto,
@@ -34,6 +41,8 @@ export class ProductsController {
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
   @UseInterceptors(FileInterceptor('image'))
   async updateItem(
     @Param('id') id: string,
@@ -44,6 +53,8 @@ export class ProductsController {
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
   async deleteItem(@Param('id') id: string) {
     return this.productsService.delete(id);
   }

@@ -1,4 +1,8 @@
 import { CloudinaryFolders } from '#types/cloudinary';
+import { JwtAuthGuard } from '@common/auth/jwt-auth.guard';
+import { Roles } from '@common/decorators/roles.decorator';
+import { UserRole } from '@common/enums/UserRole';
+import { RolesGuard } from '@common/guards/roles.guard';
 import { UpdatePromocodeDto } from '@modules/promotions/dto/update-promocode.dto';
 import {
   Controller,
@@ -7,6 +11,7 @@ import {
   Param,
   Get,
   Delete,
+  UseGuards,
   UseInterceptors,
   UploadedFile,
   Patch,
@@ -25,6 +30,8 @@ class PromotionsController {
   ) {}
 
   @Post()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
   @UseInterceptors(FileInterceptor('image'))
   async createPromotion(@UploadedFile() image: Express.Multer.File, @Body() dto: CreatePromotionDto) {
     let imageUrl
@@ -47,11 +54,15 @@ class PromotionsController {
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
   async deletePromotion(@Param('id') id: string) {
     return this.promotionsService.deletePromotion(id);
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
   @UseInterceptors(FileInterceptor('image'))
   async updatePromotion(
     @Param('id') id: string,
@@ -62,6 +73,8 @@ class PromotionsController {
   }
 
   @Post('code')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
   async createPromoCode(@Body() dto: CreatePromoCodeDto) {
     return this.promotionsService.createPromoCode(dto);
   }
@@ -77,6 +90,8 @@ class PromotionsController {
   }
 
   @Patch('code/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
   async updatePromoCode(
     @Param('id') id: string,
     @Body() dto: UpdatePromocodeDto
@@ -85,6 +100,8 @@ class PromotionsController {
   }
 
   @Delete('code/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
   async deletePromoCode(@Param('id') id: string) {
     return this.promotionsService.deletePromoCode(id);
   }
