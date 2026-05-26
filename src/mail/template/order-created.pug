@@ -1,0 +1,102 @@
+doctype html
+html(lang="uk")
+    head
+        meta(charset="UTF-8")
+        meta(name="viewport" content="width=device-width, initial-scale=1.0")
+        title HTML EMAIL TEMPLATE
+        style(type="text/css").
+            body {
+                margin: 0;
+                background-color: #cccccc;
+            }
+
+            table {
+                border-spacing: 0;
+                border-collapse: collapse;
+            }
+
+            td {
+                padding: 0;
+            }
+
+            img {
+                border: 0;
+                display: block;
+            }
+
+            .wrapper {
+                width: 100%;
+                table-layout: fixed;
+                background-color: #cccccc;
+                padding-bottom: 60px;
+            }
+
+            .two-columns {
+                font-size: 0;
+                text-align: center;
+            }
+
+            .two-columns .column {
+                width: 100%;
+                max-width: 300px;
+                display: inline-block;
+                vertical-align: top;
+            }
+
+            .main {
+                background-color: #ffffff;
+                margin: 0 auto;
+                width: 100%;
+                max-width: 600px;
+                font-family: sans-serif;
+                color: #171a1b;
+            }
+
+    body
+        center.wrapper
+            table.main(width="100%" bgcolor="#ffffff")
+                tr
+                    td(align="center" style="padding:0;")
+                        a(href="https://www.goldsushi.com/menu" style="display:block;")
+                            img(src="/emailTamplates/img/1.png" alt="тут буде банер" width="600" style="display:block; max-width:100%; height:auto;")
+
+                tr
+                    td(style="padding:24px 20px 20px 20px;")
+                        p(style="text-align:center; font-family:Arial, sans-serif; font-size:16px; line-height:24px; color:#171a1b; margin:0;")
+                            | Добрий день!
+                            br
+                            br
+                            | Замовлення у закладі
+                            strong Gold Sushi
+                            |  підтверджено.
+                            |  Щойно замовлення буде готове, його можна відстежувати на сайті.
+                            br
+                            br
+                            | Виникли питання? Звертайтесь до нашої служби підтримки за номером
+                            strong +38(098) 4086190
+                            |  або на електронну пошту
+                            strong goldsushi23@gmail.com
+                            | .
+
+                tr
+                    td(align="center" style="padding-bottom:30px;")
+                        a(
+                            href="https://www.instagram.com/goldsushidostavka/"
+                            style="background:#ff714b; color:#ffffff; text-decoration:none; opacity: 70%; padding:12px 22px; border-radius:6px; font-size:14px; display:inline-block;"
+                        ) Слідкуйте за нами в Instagram
+
+                tr
+
+                tr
+                    td(align="center" style="padding-bottom:20px;")
+                        table(cellpadding="0" cellspacing="0")
+                            tr
+                                td(style="padding:0 6px;")
+                                    a(href="https://www.facebook.com/profile.php?id=61556516378389" target="_blank")
+                                        img(src="/public/icons/facebook.svg" width="28" alt="Facebook")
+                                td(style="padding:0 6px;")
+                                    a(href="https://www.tiktok.com/@gold.sushi" target="_blank")
+                                        img(src="/public/icons/tiktok.svg" width="28" alt="TikTok")
+                                td(style="padding:0 6px;")
+                                    a(href="https://www.instagram.com/goldsushidostavka/" target="_blank")
+                                        img(src="/public/icons/instagram.svg" width="28" alt="Instagram")
