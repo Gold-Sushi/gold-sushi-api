@@ -22,7 +22,6 @@ import { DatabaseModule } from './database/database.module';
     MulterModule.register({
       storage: memoryStorage(),
     }),
-    TestingModule,
     DatabaseModule,
     HealthModule,
     UsersModule,

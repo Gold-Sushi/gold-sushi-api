@@ -6,19 +6,16 @@ import {
   SwaggerDocumentOptions,
 } from '@nestjs/swagger';
 import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
-import * as cookieParser from 'cookie-parser';
-import * as cors from 'cors';
+import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  app.use(
-    cors({
-      origin: ['http://localhost:3000', process.env.FRONTEND_URL],
-      methods: 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
-      allowedHeaders: 'Content-Type, Authorization',
-    }),
-  );
+  app.enableCors({
+    origin: ['http://localhost:3000', process.env.FRONTEND_URL],
+    methods: 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
+    allowedHeaders: 'Content-Type, Authorization',
+  });
 
   app.use(cookieParser());
   app.useGlobalPipes(new ValidationPipe({
