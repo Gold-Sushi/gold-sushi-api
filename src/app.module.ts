@@ -17,6 +17,7 @@ import { UsersModule } from '@modules/users/users.module';
 import { CloudinaryModule } from '@common/cloudinary/cloudinary.module';
 
 import { DatabaseModule } from './database/database.module';
+import { MailModule } from './mail/mail.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { DatabaseModule } from './database/database.module';
     CloudinaryModule,
     PromotionsModule,
     OrdersModule,
+    MailModule,
   ],
   controllers: [],
   providers: [

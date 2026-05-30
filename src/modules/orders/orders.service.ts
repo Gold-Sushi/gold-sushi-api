@@ -6,6 +6,7 @@ import { BadRequestException, ConflictException, Injectable } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { UserRole } from '@common/enums/UserRole';
+import { MailService } from '../../mail/mail.service';
 
 @Injectable()
 export class OrdersService {
@@ -13,6 +14,7 @@ export class OrdersService {
     @InjectRepository(OrderEntity) private readonly ordersRepo: Repository<OrderEntity>,
     @InjectRepository(ProductEntity) private productRepository: Repository<ProductEntity>,
     @InjectRepository(UserEntity) private readonly usersRepo: Repository<UserEntity>,
+    private readonly mailService: MailService,
   ) {}
 
 
@@ -73,7 +75,19 @@ export class OrdersService {
       };
     });
 
-    return await this.ordersRepo.save(newOrder);
+    const savedOrder = await this.ordersRepo.save(newOrder);
+
+    // Reload with relations so the email has product titles + recipient info,
+    // then fire-and-forget (never blocks/breaks order creation).
+    void this.getOrder(savedOrder.id)
+      .then((fullOrder) => {
+        if (fullOrder) {
+          return this.mailService.sendOrderConfirmationEmail(fullOrder);
+        }
+      })
+      .catch(() => undefined);
+
+    return savedOrder;
   }
 
   updateOrderStatus() {

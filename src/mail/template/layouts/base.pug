@@ -1,0 +1,68 @@
+//- ============================================================
+//- Base email layout (Gmail + Outlook focused)
+//- Child templates: `extends ../layouts/base` then `block content`.
+//- Expected locals: brand, subject, preheader
+//- ============================================================
+doctype html
+html(lang="uk" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office")
+  head
+    meta(charset="utf-8")
+    meta(name="viewport" content="width=device-width, initial-scale=1.0")
+    meta(http-equiv="X-UA-Compatible" content="IE=edge")
+    //- Stops Apple Mail / iOS from auto-resizing text & auto-linking data
+    meta(name="x-apple-disable-message-reformatting")
+    meta(name="format-detection" content="telephone=no, date=no, address=no, email=no")
+    meta(name="color-scheme" content="light")
+    meta(name="supported-color-schemes" content="light")
+    title= subject || (brand && brand.name)
+
+    //- Outlook (Word engine) rendering fixes
+    | <!--[if mso]>
+    | <noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
+    | <![endif]-->
+
+    style(type="text/css").
+      /* Gmail keeps embedded styles for hover / responsive tweaks. */
+      body { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+      table { border-spacing: 0; border-collapse: collapse; }
+      td { padding: 0; }
+      img { border: 0; line-height: 100%; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
+      a { text-decoration: none; }
+      /* Outlook: kill default blue underline on auto-linked text */
+      .ExternalClass { width: 100%; }
+      .ExternalClass, .ExternalClass p, .ExternalClass span, .ExternalClass font, .ExternalClass td, .ExternalClass div { line-height: 100%; }
+
+      @media only screen and (max-width: 600px) {
+        .email-container { width: 100% !important; }
+        .px-sm { padding-left: 16px !important; padding-right: 16px !important; }
+        .stack { display: block !important; width: 100% !important; }
+      }
+
+  body(style="margin:0; padding:0; width:100%; background-color:#eceff1; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%;")
+    //- Preheader: short summary shown in the inbox preview, hidden in the body.
+    div(style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#eceff1; opacity:0;")
+      = preheader || ''
+      //- Render entities push the real preview text out of the snippet line.
+      | &#8204;&nbsp;&#8203;&#8204;&nbsp;&#8203;&#8204;&nbsp;&#8203;&#8204;&nbsp;&#8203;
+
+    center(role="article" aria-roledescription="email" lang="uk" style="width:100%; background-color:#eceff1;")
+      //- Outlook needs a fixed-width ghost table to honor max-width.
+      | <!--[if mso | IE]>
+      | <table role="presentation" width="600" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td>
+      | <![endif]-->
+
+      table.email-container(role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" width="600" style="margin:0 auto; width:600px; max-width:600px; background-color:#ffffff; font-family:Arial, 'Helvetica Neue', Helvetica, sans-serif; color:#171a1b;")
+        tr
+          td
+            include ../partials/header.pug
+        tr
+          td.px-sm(style="padding:24px 32px;")
+            block content
+        tr
+          td
+            include ../partials/footer.pug
+
+      | <!--[if mso | IE]>
+      | </td></tr></table>
+      | <![endif]-->
+

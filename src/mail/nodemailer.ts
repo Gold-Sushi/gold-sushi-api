@@ -1,6 +1,7 @@
 import { MailerModule } from '@nestjs-modules/mailer';
 import { ConfigService } from '@nestjs/config';
 import { PugAdapter } from '@nestjs-modules/mailer/dist/adapters/pug.adapter';
+import { join } from 'path';
 
 export const nodeMailer = MailerModule.forRootAsync({
   useFactory: (configService: ConfigService) => ({
@@ -13,11 +14,16 @@ export const nodeMailer = MailerModule.forRootAsync({
         pass: configService.get<string>('MAIL_PASSWORD'),
       },
     },
+    defaults: {
+      from: `"${configService.get<string>('MAIL_BRAND_NAME') ?? 'Gold Sushi'}" <${configService.get<string>('MAIL_SENDER')}>`,
+    },
     template: {
-      dir: __dirname + './template/notification',
-      adapter: new PugAdapter({ inlineCssEnabled: true }),
+      // Compiled templates live next to this file under `template/`.
+      dir: join(__dirname, 'template'),
+      adapter: new PugAdapter(),
       options: {
-        strict: true,
+        // Allow `extends`/`include` partials to be resolved from the templates dir.
+        strict: false,
       },
     },
   }),

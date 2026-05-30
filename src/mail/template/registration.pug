@@ -1,0 +1,39 @@
+//- ============================================================
+//- Successful registration email.
+//- Locals: brand, subject, preheader, firstName, menuUrl
+//- ============================================================
+extends layouts/base.pug
+
+block content
+  h1(style="margin:0 0 16px 0; font-family:Arial, sans-serif; font-size:22px; line-height:28px; color:#171a1b; text-align:center;")
+    | Вітаємо у #{brand.name}! 🎉
+
+  p(style="margin:0 0 16px 0; font-family:Arial, sans-serif; font-size:16px; line-height:24px; color:#171a1b; text-align:center;")
+    | Добрий день#{firstName ? ', ' + firstName : ''}!
+
+  p(style="margin:0 0 16px 0; font-family:Arial, sans-serif; font-size:16px; line-height:24px; color:#171a1b; text-align:center;")
+    | Ваш обліковий запис успішно створено. Тепер ви можете замовляти улюблені страви,
+    | відстежувати статус замовлень та користуватись персональними пропозиціями.
+
+  //- Bulletproof CTA button
+  table(role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:8px auto 8px auto;")
+    tr
+      td(align="center" bgcolor=brand.primaryColor style="border-radius:6px;")
+        | <!--[if mso]>
+        | <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="#{brand.menuUrl}" style="height:46px;v-text-anchor:middle;width:220px;" arcsize="13%" strokecolor="#{brand.primaryColor}" fillcolor="#{brand.primaryColor}">
+        | <w:anchorlock/>
+        | <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:16px;font-weight:bold;">Перейти до меню</center>
+        | </v:roundrect>
+        | <![endif]-->
+        a(href=brand.menuUrl target="_blank" style="background-color:#{brand.primaryColor}; color:#ffffff; display:inline-block; font-family:Arial, sans-serif; font-size:16px; font-weight:bold; line-height:46px; text-align:center; text-decoration:none; width:220px; border-radius:6px; mso-hide:all;")
+          | Перейти до меню
+
+  p(style="margin:20px 0 0 0; font-family:Arial, sans-serif; font-size:14px; line-height:22px; color:#546e7a; text-align:center;")
+    | Виникли питання? Телефонуйте
+    |
+    a(href=`tel:${brand.supportPhone.replace(/[^+0-9]/g, '')}` style="color:#{brand.primaryColor}; text-decoration:none;")= brand.supportPhone
+    |  або пишіть на
+    |
+    a(href=`mailto:${brand.supportEmail}` style="color:#{brand.primaryColor}; text-decoration:none;")= brand.supportEmail
+    | .
+

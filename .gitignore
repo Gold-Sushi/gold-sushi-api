@@ -70,3 +70,6 @@ ssl/
 backup_*.sql
 *.backup
 
+
+# Rendered email previews
+preview/

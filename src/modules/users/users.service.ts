@@ -10,6 +10,7 @@ import { ResponseUserDto } from './dto/response-user.dto';
 import { OrderEntity } from '@modules/orders/entities/order.entity';
 import { OrderStatus } from '@common/enums/Order';
 import { ProductEntity } from '@modules/products/entities/product.entity';
+import { MailService } from '../../mail/mail.service';
 
 @Injectable()
 export class UsersService {
@@ -18,6 +19,7 @@ export class UsersService {
     @InjectRepository(OrderEntity) private readonly ordersRepo: Repository<OrderEntity>,
     @InjectRepository(ProductEntity) private readonly productRepo: Repository<ProductEntity>,
     private bcryptService: BcryptService,
+    private readonly mailService: MailService,
   ) {}
 
   async create(user: CreateUserDto) {
@@ -35,6 +37,12 @@ export class UsersService {
     } catch (e) {
       throw new BadRequestException('user was not created');
     }
+
+    // Fire-and-forget welcome email (never blocks/breaks registration).
+    void this.mailService.sendRegistrationEmail({
+      email: newUser.email,
+      firstName: newUser.firstName,
+    });
 
     return newUser;
   }
