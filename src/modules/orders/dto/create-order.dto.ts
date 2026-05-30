@@ -8,11 +8,24 @@ import {
   ArrayMinSize,
   ValidateNested,
   IsDateString,
+  IsEmail,
 } from 'class-validator';
 import { CreateOrderItemDTO } from './create-order-item.dto';
 import { DeliveryType, PaymentType } from '@common/enums/Order';
 
 export class CreateOrderDTO {
+  @IsOptional()
+  @IsString()
+  firstName?: string;
+
+  @IsOptional()
+  @IsString()
+  lastName?: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
   @IsString()
   @IsNotEmpty()
   address1: string;

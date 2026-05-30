@@ -28,8 +28,8 @@ export class UserEntity {
   email: string;
 
   @Exclude()
-  @Column({ type: 'varchar' })
-  password: string;
+  @Column({ type: 'varchar', nullable: true })
+  password: string | null;
 
   @Column({ type: 'varchar' })
   @IsPhoneNumber()

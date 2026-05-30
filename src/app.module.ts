@@ -2,9 +2,11 @@ import { CartModule } from '@modules/cart/cart.module';
 import { OrdersModule } from '@modules/orders/orders.module';
 import { PromotionsModule } from '@modules/promotions/promotions.module';
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { MulterModule } from '@nestjs/platform-express';
 import { TestingModule } from '@nestjs/testing';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { memoryStorage } from 'multer';
 
 import { AuthModule } from '@common/auth/auth.module';
@@ -19,6 +21,7 @@ import { DatabaseModule } from './database/database.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
     MulterModule.register({
       storage: memoryStorage(),
     }),
@@ -34,6 +37,8 @@ import { DatabaseModule } from './database/database.module';
     OrdersModule,
   ],
   controllers: [],
-  providers: [],
+  providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}

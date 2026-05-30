@@ -1,17 +1,19 @@
 import { OrdersController } from '@modules/orders/orders.controller';
 import { ProductEntity } from '@modules/products/entities/product.entity';
+import { UserEntity } from '@modules/users/entities/user.entity';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { OrdersService } from './orders.service';
 import { OrderEntity } from '@modules/orders/entities/order.entity';
 import { OrderDetailEntity } from '@modules/orders/entities/order-detail.entity';
+import { OrderOwnerGuard } from '@modules/orders/guards/order-owner.guard';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([OrderEntity, OrderDetailEntity, ProductEntity]),
+    TypeOrmModule.forFeature([OrderEntity, OrderDetailEntity, ProductEntity, UserEntity]),
   ],
   controllers: [OrdersController],
-  providers: [OrdersService]
+  providers: [OrdersService, OrderOwnerGuard]
 })
 export class OrdersModule {
 }
