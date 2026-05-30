@@ -1,7 +1,7 @@
 import { OrderDetailEntity } from '@modules/orders/entities/order-detail.entity';
 import { UserEntity } from '@modules/users/entities/user.entity';
 import { Column, Entity, ManyToOne, OneToMany, PrimaryGeneratedColumn, JoinColumn, Generated } from 'typeorm';
-import { DeliveryType, OrderStatus, PaymentType } from '@common/enums/Order';
+import { DeliveryType, OrderStatus, PaymentStatus, PaymentType } from '@common/enums/Order';
 
 
 @Entity('orders')
@@ -32,6 +32,13 @@ export class OrderEntity {
 
   @Column({ type: 'enum', enum: PaymentType })
   paymentType: PaymentType;
+
+  @Column({ type: 'enum', enum: PaymentStatus, default: PaymentStatus.None })
+  paymentStatus: PaymentStatus;
+
+  // Monobank invoice identifier returned by the acquiring API.
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  invoiceId: string | null;
 
   @Column({ type: 'enum', enum: DeliveryType })
   deliveryType: DeliveryType;

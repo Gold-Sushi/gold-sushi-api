@@ -154,6 +154,50 @@ Once running, access Swagger documentation at:
 - Local: http://localhost:4200/swagger
 - Production: https://yourdomain.com/swagger
 
+## Online Payments (Monobank)
+
+Card payments are processed through the [Monobank Acquiring API](https://monobank.ua/api-docs/acquiring/methods/ia/post--api--merchant--invoice--create).
+
+### Configuration
+
+Add the following variables to your `.env` (see `.env.example`):
+
+| Variable | Description |
+| --- | --- |
+| `MONOBANK_TOKEN` | Merchant token from the Monobank web cabinet (Acquiring → API token). **Required.** |
+| `MONOBANK_API_URL` | API base URL. Defaults to `https://api.monobank.ua`. |
+| `MONOBANK_INVOICE_VALIDITY` | Invoice lifetime in seconds. Defaults to `3600`. |
+| `PUBLIC_API_URL` | Publicly reachable base URL of this API, used to build the webhook URL. |
+| `MONOBANK_WEBHOOK_URL` | Explicit webhook URL. Overrides the value derived from `PUBLIC_API_URL`. |
+| `PAYMENT_REDIRECT_URL` | Where the customer is redirected after paying. Falls back to `FRONTEND_URL`. |
+
+> The webhook endpoint must be reachable from the public internet for Monobank
+> to deliver payment status updates.
+
+### Payment flow
+
+1. Create an order with `paymentType` set to `2` (`PaymentType.Online`).
+2. Start the payment to obtain the hosted Monobank payment page:
+
+   ```http
+   POST /api/payments/monobank/create/:orderId
+   ```
+
+   Returns `{ invoiceId, pageUrl, orderId }`. Redirect the customer to `pageUrl`.
+3. Monobank notifies the API about status changes via a signed webhook
+   (`POST /api/payments/monobank/webhook`). The signature (`X-Sign` header) is
+   verified against the Monobank public key before the order is updated.
+4. Poll or read the latest status (also refreshed from Monobank) with:
+
+   ```http
+   GET /api/payments/monobank/status/:orderId
+   ```
+
+   Returns `{ orderId, invoiceId, paymentStatus }`.
+
+The order's `paymentStatus` reflects the Monobank invoice lifecycle:
+`none → created → processing → hold → success | failure | reversed | expired`.
+
 ## Test
 
 ```bash

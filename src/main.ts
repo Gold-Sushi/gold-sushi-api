@@ -9,7 +9,11 @@ import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    // Preserve the raw request body so we can verify the signature
+    // (X-Sign header) on Monobank payment webhooks.
+    rawBody: true,
+  });
 
   app.enableCors({
     origin: ['http://localhost:3000', process.env.FRONTEND_URL],
