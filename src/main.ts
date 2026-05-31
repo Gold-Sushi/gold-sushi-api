@@ -33,6 +33,19 @@ async function bootstrap() {
     .setDescription('The Pizza delivery API description')
     .setVersion('1.0')
     .addTag('pizza')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        name: 'Authorization',
+        in: 'header',
+        description:
+          'JWT access token. Some endpoints require it (USER/ADMIN), others accept it optionally for guest flows.',
+      },
+      // Name referenced by @ApiBearerAuth() on protected endpoints
+      'access-token',
+    )
     .build();
 
   const options: SwaggerDocumentOptions = {

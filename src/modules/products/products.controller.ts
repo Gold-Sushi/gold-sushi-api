@@ -18,7 +18,14 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiForbiddenResponse,
+  ApiOperation,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import { ProductResponseDto } from './dto/product-response.dto';
 import { ProductsService } from './products.service';
 
@@ -32,6 +39,11 @@ export class ProductsController {
   @Post('create')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)
+  @ApiBearerAuth('access-token')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Create a product', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token.' })
+  @ApiForbiddenResponse({ description: 'Authenticated user does not have the ADMIN role.' })
   @UseInterceptors(FileInterceptor('image'))
   async create(
     @Body() body: CreateProductDto,
@@ -43,6 +55,11 @@ export class ProductsController {
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)
+  @ApiBearerAuth('access-token')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Update a product', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token.' })
+  @ApiForbiddenResponse({ description: 'Authenticated user does not have the ADMIN role.' })
   @UseInterceptors(FileInterceptor('image'))
   async updateItem(
     @Param('id') id: string,
@@ -55,21 +72,28 @@ export class ProductsController {
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Delete a product', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token.' })
+  @ApiForbiddenResponse({ description: 'Authenticated user does not have the ADMIN role.' })
   async deleteItem(@Param('id') id: string) {
     return this.productsService.delete(id);
   }
 
   @Get()
+  @ApiOperation({ summary: 'List all products', description: 'Public endpoint.' })
   async getAllItems(): Promise<ProductResponseDto[]> {
     return this.productsService.getAll();
   }
 
   @Get('unassigned')
+  @ApiOperation({ summary: 'List products not assigned to a category', description: 'Public endpoint.' })
   async getAllUnassignedItems(): Promise<ProductResponseDto[]> {
     return this.productsService.getAllUnassigned();
   }
 
   @Get('statuses')
+  @ApiOperation({ summary: 'List available product statuses', description: 'Public endpoint.' })
   async getStatuses(): Promise<any> {
     return [
       { value: ProductStatus.ACTIVE, label: 'Active' },
@@ -79,11 +103,13 @@ export class ProductsController {
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Get a product by id', description: 'Public endpoint.' })
   async getItemById(@Param('id') id: string): Promise<ProductResponseDto> {
     return this.productsService.getById(id);
   }
 
   @Get(':id/recommendations')
+  @ApiOperation({ summary: 'Get recommended products for a product', description: 'Public endpoint.' })
   async getRecommendations(
     @Param('id') id: string,
     @Query('limit') limit?: string

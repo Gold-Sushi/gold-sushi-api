@@ -10,7 +10,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiExcludeEndpoint, ApiForbiddenResponse, ApiNotFoundResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { OptionalJwtAuthGuard } from '@common/auth/optional-jwt-auth.guard';
 import { OrderOwnerGuard } from '@modules/orders/guards/order-owner.guard';
@@ -33,6 +33,14 @@ export class PaymentsController {
    */
   @Post('create/:id')
   @UseGuards(OptionalJwtAuthGuard, OrderOwnerGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Start a Monobank payment for an order',
+    description:
+      'Authentication is optional. Guest orders are accessible by id; registered-user orders require the owner Bearer JWT or an ADMIN token.',
+  })
+  @ApiForbiddenResponse({ description: 'Order belongs to another registered user.' })
+  @ApiNotFoundResponse({ description: 'Order not found.' })
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   createPayment(
     @Param('id') orderId: string,
@@ -47,6 +55,14 @@ export class PaymentsController {
   /** Returns (and refreshes from Monobank) the payment status of an order. */
   @Get('status/:id')
   @UseGuards(OptionalJwtAuthGuard, OrderOwnerGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get the payment status of an order',
+    description:
+      'Authentication is optional. Guest orders are accessible by id; registered-user orders require the owner Bearer JWT or an ADMIN token.',
+  })
+  @ApiForbiddenResponse({ description: 'Order belongs to another registered user.' })
+  @ApiNotFoundResponse({ description: 'Order not found.' })
   getStatus(@Param('id') orderId: string) {
     return this.paymentsService.getPaymentStatus(orderId);
   }
