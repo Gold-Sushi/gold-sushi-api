@@ -4,6 +4,7 @@ import { UpdateOrderDTO } from '@modules/orders/dto/update-order.dto';
 import { UpdateOrderStatusDTO } from '@modules/orders/dto/update-order-status.dto';
 import { ApplyPromoCodeDTO } from '@modules/orders/dto/apply-promo-code.dto';
 import { AssignCourierDTO } from '@modules/orders/dto/assign-courier.dto';
+import { FilterOrdersDTO } from '@modules/orders/dto/filter-orders.dto';
 import { OrdersService } from '@modules/orders/orders.service';
 import { OrderOwnerGuard } from '@modules/orders/guards/order-owner.guard';
 import { CourierAssignedGuard } from '@modules/orders/guards/courier-assigned.guard';
@@ -47,9 +48,13 @@ export class OrdersController {
 
   @Get('all')
   @AdminOnly()
-  @ApiOperation({ summary: 'List all orders', description: 'Requires a Bearer JWT with the ADMIN role.' })
-  getAllOrders() {
-    return this.ordersService.getAllOrders();
+  @ApiOperation({
+    summary: 'List all orders',
+    description:
+      'Requires a Bearer JWT with the ADMIN role. Supports filtering (status, payment, delivery, user, courier, promo code, total/date ranges, search), sorting and pagination.',
+  })
+  getAllOrders(@Query() filter: FilterOrdersDTO) {
+    return this.ordersService.getAllOrders(filter);
   }
 
   @Patch(':id/status')

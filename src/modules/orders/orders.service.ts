@@ -1,6 +1,11 @@
 import { CreateOrderDTO } from '@modules/orders/dto/create-order.dto';
 import { UpdateOrderDTO } from '@modules/orders/dto/update-order.dto';
 import { CourierOrderDto } from '@modules/orders/dto/courier-order.dto';
+import {
+  FilterOrdersDTO,
+  OrderSortBy,
+  SortOrder,
+} from '@modules/orders/dto/filter-orders.dto';
 import { OrderEntity } from '@modules/orders/entities/order.entity';
 import { ProductEntity } from '@modules/products/entities/product.entity';
 import { UserEntity } from '@modules/users/entities/user.entity';
@@ -478,14 +483,104 @@ export class OrdersService {
     return { id, deleted: true };
   }
 
-  getAllOrders() {
-    const page = 1;
-    const limit = 10;
-    return this.ordersRepo.find({
-      skip: (page - 1) * limit,
-      take: limit,
-      order: { createdAt: 'DESC' },
-    });
+  /**
+   * List orders with optional filtering, sorting and pagination (admin view).
+   *
+   * Supports filtering by status, payment status/type, delivery type, owner,
+   * assigned courier, promo code, total range and creation date range, as
+   * well as a free-text search across the order number, phone and city.
+   */
+  async getAllOrders(filter: FilterOrdersDTO = {}) {
+    const {
+      status,
+      paymentStatus,
+      paymentType,
+      deliveryType,
+      userId,
+      courierId,
+      promoCode,
+      search,
+      minTotal,
+      maxTotal,
+      dateFrom,
+      dateTo,
+      sortBy = OrderSortBy.CreatedAt,
+      sortOrder = SortOrder.Desc,
+      page = 1,
+      limit = 10,
+    } = filter;
+
+    const qb = this.ordersRepo
+      .createQueryBuilder('order')
+      .leftJoinAndSelect('order.user', 'user')
+      .leftJoinAndSelect('order.assignedCourier', 'assignedCourier');
+
+    if (status !== undefined) {
+      qb.andWhere('order.status = :status', { status });
+    }
+
+    if (paymentStatus !== undefined) {
+      qb.andWhere('order.paymentStatus = :paymentStatus', { paymentStatus });
+    }
+
+    if (paymentType !== undefined) {
+      qb.andWhere('order.paymentType = :paymentType', { paymentType });
+    }
+
+    if (deliveryType !== undefined) {
+      qb.andWhere('order.deliveryType = :deliveryType', { deliveryType });
+    }
+
+    if (userId) {
+      qb.andWhere('user.id = :userId', { userId });
+    }
+
+    if (courierId) {
+      qb.andWhere('assignedCourier.id = :courierId', { courierId });
+    }
+
+    if (promoCode) {
+      qb.andWhere('LOWER(order.promoCode) = LOWER(:promoCode)', { promoCode });
+    }
+
+    if (minTotal !== undefined) {
+      qb.andWhere('order.total >= :minTotal', { minTotal });
+    }
+
+    if (maxTotal !== undefined) {
+      qb.andWhere('order.total <= :maxTotal', { maxTotal });
+    }
+
+    if (dateFrom) {
+      qb.andWhere('order.createdAt >= :dateFrom', { dateFrom });
+    }
+
+    if (dateTo) {
+      qb.andWhere('order.createdAt <= :dateTo', { dateTo });
+    }
+
+    if (search) {
+      qb.andWhere(
+        '(CAST(order.number AS TEXT) ILIKE :search OR order.phone ILIKE :search OR order.city ILIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    qb.orderBy(`order.${sortBy}`, sortOrder)
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [data, total] = await qb.getManyAndCount();
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    };
   }
 
   getOrder(id: string) {
