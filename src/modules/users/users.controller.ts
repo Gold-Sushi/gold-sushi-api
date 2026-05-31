@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, Res, HttpStatus, Req
 import { Response } from 'express';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { CreateCourierDto } from './dto/create-courier.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AdminOnly, Authenticated } from '@common/decorators/auth.decorators';
@@ -23,6 +24,26 @@ export class UsersController {
     }
 
     res.status(HttpStatus.CREATED).send();
+  }
+
+  @AdminOnly()
+  @Post('couriers')
+  @ApiOperation({
+    summary: 'Create a courier account',
+    description: 'Requires a Bearer JWT with the ADMIN role. Always creates a user with the COURIER role.',
+  })
+  createCourier(@Body() courier: CreateCourierDto): Promise<ResponseUserDto> {
+    return this.usersService.createCourier(courier);
+  }
+
+  @AdminOnly()
+  @Get('couriers')
+  @ApiOperation({
+    summary: 'List all couriers',
+    description: 'Requires a Bearer JWT with the ADMIN role. Intended for assignment dropdowns.',
+  })
+  getCouriers(): Promise<ResponseUserDto[]> {
+    return this.usersService.getCouriers();
   }
 
   @Patch(':id')

@@ -76,6 +76,11 @@ export class OrderEntity {
   @JoinColumn({ name: 'user_id' })
   user: UserEntity;
 
+  // Courier responsible for delivering this order (assigned by an admin).
+  @ManyToOne(() => UserEntity, (user) => user.assignedOrders, { nullable: true })
+  @JoinColumn({ name: 'courier_id' })
+  assignedCourier: UserEntity | null;
+
   @OneToMany(() => OrderDetailEntity, (orderDetail) => orderDetail.order, {
     cascade: true,
     orphanedRowAction: 'delete',

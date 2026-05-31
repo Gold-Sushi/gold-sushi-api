@@ -68,6 +68,10 @@ export class UserEntity {
   @OneToMany(() => OrderEntity, (order) => order.user)
   orders: OrderEntity[];
 
+  // Orders assigned to this user as the delivering courier.
+  @OneToMany(() => OrderEntity, (order) => order.assignedCourier)
+  assignedOrders: OrderEntity[];
+
   @ManyToMany(() => ProductEntity, { eager: true })
   @JoinTable({
     name: 'user_favourites',

@@ -12,6 +12,7 @@ import { RolesGuard } from '@common/guards/roles.guard';
 
 const UNAUTHORIZED_DESCRIPTION = 'Missing or invalid access token.';
 const FORBIDDEN_ROLE_DESCRIPTION = 'Authenticated user does not have the ADMIN role.';
+const FORBIDDEN_COURIER_DESCRIPTION = 'Authenticated user does not have the COURIER role.';
 
 /**
  * Protects a route so that only authenticated users with the ADMIN role can
@@ -24,6 +25,21 @@ export function AdminOnly() {
     ApiBearerAuth('access-token'),
     ApiUnauthorizedResponse({ description: UNAUTHORIZED_DESCRIPTION }),
     ApiForbiddenResponse({ description: FORBIDDEN_ROLE_DESCRIPTION }),
+  );
+}
+
+/**
+ * Protects a route so that only authenticated users with the COURIER role can
+ * access it, and documents the corresponding 401/403 Swagger responses.
+ * Additional guards (e.g. assignment checks) can be attached.
+ */
+export function CourierOnly(...guards: Parameters<typeof UseGuards>) {
+  return applyDecorators(
+    UseGuards(JwtAuthGuard, RolesGuard, ...guards),
+    Roles(UserRole.Courier),
+    ApiBearerAuth('access-token'),
+    ApiUnauthorizedResponse({ description: UNAUTHORIZED_DESCRIPTION }),
+    ApiForbiddenResponse({ description: FORBIDDEN_COURIER_DESCRIPTION }),
   );
 }
 

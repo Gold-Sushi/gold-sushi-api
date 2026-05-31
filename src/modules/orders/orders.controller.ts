@@ -1,11 +1,13 @@
-import { AdminOnly, OptionalAuth } from '@common/decorators/auth.decorators';
+import { AdminOnly, CourierOnly, OptionalAuth } from '@common/decorators/auth.decorators';
 import { CreateOrderDTO } from '@modules/orders/dto/create-order.dto';
 import { UpdateOrderDTO } from '@modules/orders/dto/update-order.dto';
 import { UpdateOrderStatusDTO } from '@modules/orders/dto/update-order-status.dto';
 import { ApplyPromoCodeDTO } from '@modules/orders/dto/apply-promo-code.dto';
+import { AssignCourierDTO } from '@modules/orders/dto/assign-courier.dto';
 import { OrdersService } from '@modules/orders/orders.service';
 import { OrderOwnerGuard } from '@modules/orders/guards/order-owner.guard';
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import { CourierAssignedGuard } from '@modules/orders/guards/courier-assigned.guard';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import {
   ApiForbiddenResponse,
   ApiNotFoundResponse,
@@ -13,6 +15,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { OrderStatus } from '@common/enums/Order';
 
 @ApiTags('orders')
 @Controller('orders')
@@ -57,6 +60,57 @@ export class OrdersController {
     @Body() updateOrderStatusDto: UpdateOrderStatusDTO,
   ) {
     return this.ordersService.updateOrderStatus(id, updateOrderStatusDto.status);
+  }
+
+  @Patch(':id/assign-courier')
+  @AdminOnly()
+  @ApiOperation({
+    summary: 'Assign a courier to an order',
+    description:
+      'Requires a Bearer JWT with the ADMIN role. The target user must have the COURIER role and the order must be a courier-delivery order that is not yet delivered/cancelled.',
+  })
+  assignCourier(
+    @Param('id') id: string,
+    @Body() assignCourierDto: AssignCourierDTO,
+  ) {
+    return this.ordersService.assignCourier(id, assignCourierDto.courierId);
+  }
+
+  @Get('courier/orders')
+  @CourierOnly()
+  @ApiOperation({
+    summary: 'List orders assigned to the current courier',
+    description:
+      'Requires a Bearer JWT with the COURIER role. Optionally filter by status.',
+  })
+  getCourierOrders(@Req() req, @Query('status') status?: OrderStatus) {
+    return this.ordersService.getCourierOrders(req.user.id, status);
+  }
+
+  @Get('courier/orders/:id')
+  @CourierOnly(CourierAssignedGuard)
+  @ApiOperation({
+    summary: 'Get an assigned order with delivery details',
+    description:
+      'Requires a Bearer JWT with the COURIER role. Returns customer contact and address details for an order assigned to the courier.',
+  })
+  @ApiForbiddenResponse({ description: 'Order is not assigned to this courier.' })
+  @ApiNotFoundResponse({ description: 'Order not found.' })
+  getCourierOrder(@Req() req, @Param('id') id: string) {
+    return this.ordersService.getCourierOrder(req.user.id, id);
+  }
+
+  @Patch('courier/orders/:id/deliver')
+  @CourierOnly(CourierAssignedGuard)
+  @ApiOperation({
+    summary: 'Mark an assigned order as delivered',
+    description:
+      'Requires a Bearer JWT with the COURIER role. Only the assigned courier can mark their order as Delivered (from OutForDelivery).',
+  })
+  @ApiForbiddenResponse({ description: 'Order is not assigned to this courier.' })
+  @ApiNotFoundResponse({ description: 'Order not found.' })
+  markDelivered(@Req() req, @Param('id') id: string) {
+    return this.ordersService.markDelivered(req.user.id, id);
   }
 
   @Patch(':id')

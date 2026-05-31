@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { BcryptService } from '../../utils/bcrypt/bcrypt.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { CreateCourierDto } from './dto/create-courier.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserEntity } from './entities/user.entity';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -9,6 +10,7 @@ import { plainToInstance } from 'class-transformer';
 import { ResponseUserDto } from './dto/response-user.dto';
 import { OrderEntity } from '@modules/orders/entities/order.entity';
 import { OrderStatus } from '@common/enums/Order';
+import { UserRole } from '@common/enums/UserRole';
 import { ProductEntity } from '@modules/products/entities/product.entity';
 import { MailService } from '../../mail/mail.service';
 
@@ -50,6 +52,53 @@ export class UsersService {
   async findAll(): Promise<ResponseUserDto[]> {
     const users = await this.userRepository.find();
     return plainToInstance(ResponseUserDto, users);
+  }
+
+  /**
+   * Create a dedicated courier account (admin only).
+   *
+   * Always forces the COURIER role regardless of the payload and stores a
+   * hashed password. Couriers are considered registered accounts.
+   */
+  async createCourier(courier: CreateCourierDto): Promise<ResponseUserDto> {
+    const existingUser = await this.userRepository.findOne({
+      where: { email: courier.email },
+    });
+
+    if (existingUser) {
+      throw new BadRequestException('email already exists');
+    }
+
+    const hashedPassword = await this.bcryptService.hashPassword(
+      courier.password,
+      10,
+    );
+
+    const newCourier = new UserEntity({
+      ...courier,
+      password: hashedPassword,
+      role: UserRole.Courier,
+      smsVerified: true,
+      registered: true,
+    });
+
+    try {
+      const saved = await this.userRepository.save(newCourier);
+      return plainToInstance(ResponseUserDto, saved);
+    } catch (e) {
+      throw new BadRequestException('courier was not created');
+    }
+  }
+
+  /**
+   * List all courier accounts for admin UI dropdowns.
+   */
+  async getCouriers(): Promise<ResponseUserDto[]> {
+    const couriers = await this.userRepository.find({
+      where: { role: UserRole.Courier },
+      order: { firstName: 'ASC' },
+    });
+    return plainToInstance(ResponseUserDto, couriers);
   }
 
   async findOne(id: string): Promise<ResponseUserDto> {

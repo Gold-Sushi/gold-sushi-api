@@ -1,5 +1,6 @@
 import { CreateOrderDTO } from '@modules/orders/dto/create-order.dto';
 import { UpdateOrderDTO } from '@modules/orders/dto/update-order.dto';
+import { CourierOrderDto } from '@modules/orders/dto/courier-order.dto';
 import { OrderEntity } from '@modules/orders/entities/order.entity';
 import { ProductEntity } from '@modules/products/entities/product.entity';
 import { UserEntity } from '@modules/users/entities/user.entity';
@@ -490,7 +491,131 @@ export class OrdersService {
   getOrder(id: string) {
     return this.ordersRepo.findOne({
       where: { id },
-      relations: ['items', 'items.product', 'user'],
+      relations: ['items', 'items.product', 'user', 'assignedCourier'],
     });
+  }
+
+  /**
+   * Assign (or re-assign) a courier to an order on behalf of an admin.
+   *
+   * Validates that the target user exists and actually has the COURIER role,
+   * and that the order is in a state where assigning a courier still makes
+   * sense (not already delivered or cancelled). Only courier-delivery orders
+   * can be assigned a courier.
+   */
+  async assignCourier(orderId: string, courierId: string) {
+    const order = await this.ordersRepo.findOne({ where: { id: orderId } });
+
+    if (!order) {
+      throw new NotFoundException(`Order ${orderId} not found`);
+    }
+
+    if (order.deliveryType !== DeliveryType.Courier) {
+      throw new BadRequestException(
+        'Only courier-delivery orders can be assigned a courier.',
+      );
+    }
+
+    const currentStatus = Number(order.status) as OrderStatus;
+    if (
+      currentStatus === OrderStatus.Delivered ||
+      currentStatus === OrderStatus.Cancelled
+    ) {
+      throw new BadRequestException(
+        `Cannot assign a courier to an order that is ${OrderStatus[currentStatus]}.`,
+      );
+    }
+
+    const courier = await this.usersRepo.findOne({ where: { id: courierId } });
+
+    if (!courier) {
+      throw new NotFoundException(`Courier ${courierId} not found`);
+    }
+
+    if (courier.role !== UserRole.Courier) {
+      throw new BadRequestException('Assigned user is not a courier.');
+    }
+
+    order.assignedCourier = courier;
+    await this.ordersRepo.save(order);
+
+    return this.getOrder(orderId);
+  }
+
+  /**
+   * List the orders assigned to a given courier, optionally filtered by
+   * status. Returns the trimmed courier-facing view.
+   */
+  async getCourierOrders(courierId: string, status?: OrderStatus) {
+    const where: Record<string, unknown> = {
+      assignedCourier: { id: courierId },
+    };
+
+    if (status !== undefined) {
+      where.status = status;
+    }
+
+    const orders = await this.ordersRepo.find({
+      where,
+      relations: ['items', 'items.product', 'user', 'assignedCourier'],
+      order: { createdAt: 'DESC' },
+    });
+
+    return orders.map((order) => CourierOrderDto.fromEntity(order));
+  }
+
+  /**
+   * Fetch a single order assigned to the courier, as the trimmed courier view.
+   */
+  async getCourierOrder(courierId: string, orderId: string) {
+    const order = await this.ordersRepo.findOne({
+      where: { id: orderId, assignedCourier: { id: courierId } },
+      relations: ['items', 'items.product', 'user', 'assignedCourier'],
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    return CourierOrderDto.fromEntity(order);
+  }
+
+  /**
+   * Mark an order assigned to the courier as delivered.
+   *
+   * A courier may only move an order from `OutForDelivery` to `Delivered`
+   * and only for orders assigned to them.
+   */
+  async markDelivered(courierId: string, orderId: string) {
+    const order = await this.ordersRepo.findOne({
+      where: { id: orderId },
+      relations: ['assignedCourier'],
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Order ${orderId} not found`);
+    }
+
+    if (!order.assignedCourier || order.assignedCourier.id !== courierId) {
+      throw new BadRequestException('Order is not assigned to you.');
+    }
+
+    const currentStatus = Number(order.status) as OrderStatus;
+
+    if (currentStatus === OrderStatus.Delivered) {
+      return this.getCourierOrder(courierId, orderId);
+    }
+
+    if (!canTransitionOrderStatus(currentStatus, OrderStatus.Delivered)) {
+      throw new BadRequestException(
+        `Cannot mark an order as Delivered from ${OrderStatus[currentStatus]}.`,
+      );
+    }
+
+    order.status = OrderStatus.Delivered as unknown as string;
+    order.deliveryTime = new Date();
+    await this.ordersRepo.save(order);
+
+    return this.getCourierOrder(courierId, orderId);
   }
 }
