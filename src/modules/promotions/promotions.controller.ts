@@ -29,6 +29,7 @@ import { CloudinaryService } from '@common/cloudinary/cloudinary.service';
 import { PromotionsService } from './promotions.service';
 import { CreatePromotionDto } from './dto/create-promotion.dto';
 import { CreatePromoCodeDto } from './dto/create-promocode.dto';
+import { PromotionProductsDto } from './dto/promotion-products.dto';
 
 @ApiTags('promotions')
 @Controller('promotions')
@@ -95,6 +96,40 @@ class PromotionsController {
     @Body() dto: CreatePromotionDto
   ) {
     return this.promotionsService.updatePromotion(id, dto, image);
+  }
+
+  @Post(':id/products')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Attach products to a promotion',
+    description: 'Adds the given products to the promotion. Requires a Bearer JWT with the ADMIN role.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token.' })
+  @ApiForbiddenResponse({ description: 'Authenticated user does not have the ADMIN role.' })
+  async addProductsToPromotion(
+    @Param('id') id: string,
+    @Body() dto: PromotionProductsDto,
+  ) {
+    return this.promotionsService.addProductsToPromotion(id, dto.productIds);
+  }
+
+  @Delete(':id/products')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Detach products from a promotion',
+    description: 'Removes the given products from the promotion. Requires a Bearer JWT with the ADMIN role.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token.' })
+  @ApiForbiddenResponse({ description: 'Authenticated user does not have the ADMIN role.' })
+  async removeProductsFromPromotion(
+    @Param('id') id: string,
+    @Body() dto: PromotionProductsDto,
+  ) {
+    return this.promotionsService.removeProductsFromPromotion(id, dto.productIds);
   }
 
   @Post('code')

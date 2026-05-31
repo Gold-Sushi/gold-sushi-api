@@ -4,7 +4,6 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
-  ManyToMany,
   PrimaryGeneratedColumn,
   OneToOne,
 } from 'typeorm';
@@ -44,6 +43,13 @@ export class ProductEntity {
 
   @Column({ type: 'enum', enum: ProductStatus, default: ProductStatus.ACTIVE })
   status: ProductStatus;
+
+  @ManyToOne(() => Promotion, (promotion) => promotion.products, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'promotion_id' })
+  promotion: Promotion | null;
 
   constructor(entity: Partial<ProductEntity>) {
     Object.assign(this, entity);
