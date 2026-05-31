@@ -1,7 +1,4 @@
-import { JwtAuthGuard } from '@common/auth/jwt-auth.guard';
-import { Roles } from '@common/decorators/roles.decorator';
-import { UserRole } from '@common/enums/UserRole';
-import { RolesGuard } from '@common/guards/roles.guard';
+import { AdminOnly } from '@common/decorators/auth.decorators';
 import { CreateProductDto } from '@modules/products/dto/create-product.dto';
 import { UpdateProductDto } from '@modules/products/dto/update-product.dto';
 import { ProductStatus } from '@modules/products/entities/product.entity';
@@ -14,18 +11,10 @@ import {
   Patch,
   Post, Query,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import {
-  ApiBearerAuth,
-  ApiConsumes,
-  ApiForbiddenResponse,
-  ApiOperation,
-  ApiTags,
-  ApiUnauthorizedResponse,
-} from '@nestjs/swagger';
+import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ProductResponseDto } from './dto/product-response.dto';
 import { ProductsService } from './products.service';
 
@@ -37,13 +26,9 @@ export class ProductsController {
   ) {}
 
   @Post('create')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.Admin)
-  @ApiBearerAuth('access-token')
+  @AdminOnly()
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Create a product', description: 'Requires a Bearer JWT with the ADMIN role.' })
-  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token.' })
-  @ApiForbiddenResponse({ description: 'Authenticated user does not have the ADMIN role.' })
   @UseInterceptors(FileInterceptor('image'))
   async create(
     @Body() body: CreateProductDto,
@@ -53,13 +38,9 @@ export class ProductsController {
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.Admin)
-  @ApiBearerAuth('access-token')
+  @AdminOnly()
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Update a product', description: 'Requires a Bearer JWT with the ADMIN role.' })
-  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token.' })
-  @ApiForbiddenResponse({ description: 'Authenticated user does not have the ADMIN role.' })
   @UseInterceptors(FileInterceptor('image'))
   async updateItem(
     @Param('id') id: string,
@@ -70,12 +51,8 @@ export class ProductsController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.Admin)
-  @ApiBearerAuth('access-token')
+  @AdminOnly()
   @ApiOperation({ summary: 'Delete a product', description: 'Requires a Bearer JWT with the ADMIN role.' })
-  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token.' })
-  @ApiForbiddenResponse({ description: 'Authenticated user does not have the ADMIN role.' })
   async deleteItem(@Param('id') id: string) {
     return this.productsService.delete(id);
   }

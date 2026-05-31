@@ -1,22 +1,16 @@
-import { JwtAuthGuard } from '@common/auth/jwt-auth.guard';
-import { OptionalJwtAuthGuard } from '@common/auth/optional-jwt-auth.guard';
-import { Roles } from '@common/decorators/roles.decorator';
-import { UserRole } from '@common/enums/UserRole';
-import { RolesGuard } from '@common/guards/roles.guard';
+import { AdminOnly, OptionalAuth } from '@common/decorators/auth.decorators';
 import { CreateOrderDTO } from '@modules/orders/dto/create-order.dto';
 import { UpdateOrderDTO } from '@modules/orders/dto/update-order.dto';
 import { UpdateOrderStatusDTO } from '@modules/orders/dto/update-order-status.dto';
 import { ApplyPromoCodeDTO } from '@modules/orders/dto/apply-promo-code.dto';
 import { OrdersService } from '@modules/orders/orders.service';
 import { OrderOwnerGuard } from '@modules/orders/guards/order-owner.guard';
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/common';
 import {
-  ApiBearerAuth,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOperation,
   ApiTags,
-  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 
@@ -26,8 +20,7 @@ export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   @Post('create')
-  @UseGuards(OptionalJwtAuthGuard)
-  @ApiBearerAuth('access-token')
+  @OptionalAuth()
   @ApiOperation({
     summary: 'Create an order',
     description:
@@ -50,23 +43,15 @@ export class OrdersController {
   }
 
   @Get('all')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.Admin)
-  @ApiBearerAuth('access-token')
+  @AdminOnly()
   @ApiOperation({ summary: 'List all orders', description: 'Requires a Bearer JWT with the ADMIN role.' })
-  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token.' })
-  @ApiForbiddenResponse({ description: 'Authenticated user does not have the ADMIN role.' })
   getAllOrders() {
     return this.ordersService.getAllOrders();
   }
 
   @Patch(':id/status')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.Admin)
-  @ApiBearerAuth('access-token')
+  @AdminOnly()
   @ApiOperation({ summary: 'Update an order status', description: 'Requires a Bearer JWT with the ADMIN role.' })
-  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token.' })
-  @ApiForbiddenResponse({ description: 'Authenticated user does not have the ADMIN role.' })
   updateOrderStatus(
     @Param('id') id: string,
     @Body() updateOrderStatusDto: UpdateOrderStatusDTO,
@@ -75,12 +60,8 @@ export class OrdersController {
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.Admin)
-  @ApiBearerAuth('access-token')
+  @AdminOnly()
   @ApiOperation({ summary: 'Update an order', description: 'Requires a Bearer JWT with the ADMIN role.' })
-  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token.' })
-  @ApiForbiddenResponse({ description: 'Authenticated user does not have the ADMIN role.' })
   updateOrder(
     @Param('id') id: string,
     @Body() updateOrderDto: UpdateOrderDTO,
@@ -89,19 +70,14 @@ export class OrdersController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.Admin)
-  @ApiBearerAuth('access-token')
+  @AdminOnly()
   @ApiOperation({ summary: 'Delete an order', description: 'Requires a Bearer JWT with the ADMIN role.' })
-  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token.' })
-  @ApiForbiddenResponse({ description: 'Authenticated user does not have the ADMIN role.' })
   deleteOrder(@Param('id') id: string) {
     return this.ordersService.deleteOrder(id);
   }
 
   @Get(':id')
-  @UseGuards(OptionalJwtAuthGuard, OrderOwnerGuard)
-  @ApiBearerAuth('access-token')
+  @OptionalAuth(OrderOwnerGuard)
   @ApiOperation({
     summary: 'Get an order by id',
     description:
