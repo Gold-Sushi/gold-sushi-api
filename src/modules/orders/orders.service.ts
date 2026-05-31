@@ -3,6 +3,7 @@ import { UpdateOrderDTO } from '@modules/orders/dto/update-order.dto';
 import { OrderEntity } from '@modules/orders/entities/order.entity';
 import { ProductEntity } from '@modules/products/entities/product.entity';
 import { UserEntity } from '@modules/users/entities/user.entity';
+import { Promocode } from '@modules/promotions/entities/promocode.entity';
 import {
   BadRequestException,
   ConflictException,
@@ -26,8 +27,134 @@ export class OrdersService {
     @InjectRepository(OrderEntity) private readonly ordersRepo: Repository<OrderEntity>,
     @InjectRepository(ProductEntity) private productRepository: Repository<ProductEntity>,
     @InjectRepository(UserEntity) private readonly usersRepo: Repository<UserEntity>,
+    @InjectRepository(Promocode) private readonly promoCodeRepo: Repository<Promocode>,
     private readonly mailService: MailService,
   ) {}
+
+  /**
+   * Look up and validate a promo code by its human-readable code.
+   *
+   * Throws {@link NotFoundException} when the code does not exist and
+   * {@link BadRequestException} when it has expired. The match is
+   * case-insensitive and surrounding whitespace is ignored.
+   */
+  async resolvePromoCode(code: string): Promise<Promocode> {
+    const normalized = code?.trim();
+
+    if (!normalized) {
+      throw new BadRequestException('Promo code must not be empty.');
+    }
+
+    const promoCode = await this.promoCodeRepo
+      .createQueryBuilder('promocode')
+      .where('LOWER(promocode.code) = LOWER(:code)', { code: normalized })
+      .getOne();
+
+    if (!promoCode) {
+      throw new NotFoundException(`Promo code "${normalized}" not found.`);
+    }
+
+    if (promoCode.expiryDate && new Date(promoCode.expiryDate).getTime() < Date.now()) {
+      throw new BadRequestException(`Promo code "${normalized}" has expired.`);
+    }
+
+    return promoCode;
+  }
+
+  /**
+   * Compute the discount granted by a promo code for a given subtotal.
+   *
+   * The stored `discount` is treated as a percentage of the subtotal. The
+   * result is rounded to 2 decimals and never exceeds the subtotal.
+   */
+  private calculateDiscount(subtotal: number, promoCode: Promocode): number {
+    const percent = Number(promoCode.discount) || 0;
+    const discount = (subtotal * percent) / 100;
+    const rounded = Math.round(discount * 100) / 100;
+
+    return Math.min(Math.max(rounded, 0), subtotal);
+  }
+
+  /**
+   * Returns the number of remaining uses for a code, or `null` when the code
+   * has no usage limit (unlimited).
+   */
+  private remainingUses(promoCode: Promocode): number | null {
+    if (promoCode.usageLimit == null) {
+      return null;
+    }
+    return Math.max(promoCode.usageLimit - Number(promoCode.usageCount ?? 0), 0);
+  }
+
+  /**
+   * Throws when a limited-use code has no remaining uses.
+   */
+  private assertPromoCodeAvailable(promoCode: Promocode): void {
+    const remaining = this.remainingUses(promoCode);
+    if (remaining !== null && remaining <= 0) {
+      throw new BadRequestException(
+        `Promo code "${promoCode.code}" has reached its usage limit.`,
+      );
+    }
+  }
+
+  /**
+   * Atomically claim one usage slot of a limited-use code.
+   *
+   * Uses a conditional UPDATE so concurrent orders can never over-consume the
+   * code. Throws when no slot is available (limit already reached).
+   */
+  private async consumePromoUsage(id: string): Promise<void> {
+    const result = await this.promoCodeRepo
+      .createQueryBuilder()
+      .update(Promocode)
+      .set({ usageCount: () => '"usageCount" + 1' })
+      .where('id = :id', { id })
+      .andWhere('("usageLimit" IS NULL OR "usageCount" < "usageLimit")')
+      .execute();
+
+    if (!result.affected) {
+      throw new BadRequestException('Promo code has reached its usage limit.');
+    }
+  }
+
+  /**
+   * Release one usage slot of a code (never going below zero), making it
+   * available again — e.g. when an order is cancelled or deleted.
+   */
+  private async releasePromoUsage(code: string): Promise<void> {
+    if (!code) {
+      return;
+    }
+
+    await this.promoCodeRepo
+      .createQueryBuilder()
+      .update(Promocode)
+      .set({ usageCount: () => 'GREATEST("usageCount" - 1, 0)' })
+      .where('LOWER(code) = LOWER(:code)', { code })
+      .execute();
+  }
+
+  /**
+   * Validate a promo code against a subtotal and return a preview of the
+   * resulting totals without creating an order. Useful for the checkout UI.
+   */
+  async previewPromoCode(code: string, subtotal = 0) {
+    const promoCode = await this.resolvePromoCode(code);
+    this.assertPromoCodeAvailable(promoCode);
+    const discount = this.calculateDiscount(subtotal, promoCode);
+
+    return {
+      code: promoCode.code,
+      discountPercent: Number(promoCode.discount),
+      subtotal,
+      discount,
+      total: Math.round((subtotal - discount) * 100) / 100,
+      expiryDate: promoCode.expiryDate,
+      usageLimit: promoCode.usageLimit ?? null,
+      remainingUses: this.remainingUses(promoCode),
+    };
+  }
 
 
   async createOrder(userId: string | null, order: CreateOrderDTO) {
@@ -36,10 +163,55 @@ export class OrdersService {
 
     const products = await this.productRepository.find({ where: { id: In(productIds) } });
 
-    newOrder.total = products.reduce((sum, product) => {
+    newOrder.subtotal = products.reduce((sum, product) => {
       const item = order.items.find((i) => i.productId === product.id);
       return sum + product.price * (item.quantity || 0);
     }, 0);
+
+    // Apply a promo code when provided, otherwise the order has no discount.
+    let consumedPromoCode: string | null = null;
+    if (order.promoCode) {
+      const promoCode = await this.resolvePromoCode(order.promoCode);
+      this.assertPromoCodeAvailable(promoCode);
+      // Atomically claim a usage slot (throws if the limit was just reached).
+      await this.consumePromoUsage(promoCode.id);
+      consumedPromoCode = promoCode.code;
+
+      newOrder.promoCode = promoCode.code;
+      newOrder.promoCodeConsumed = true;
+      newOrder.discount = this.calculateDiscount(newOrder.subtotal, promoCode);
+    } else {
+      newOrder.promoCode = null;
+      newOrder.promoCodeConsumed = false;
+      newOrder.discount = 0;
+    }
+
+    newOrder.total = Math.round((newOrder.subtotal - newOrder.discount) * 100) / 100;
+
+    try {
+      return await this.persistNewOrder(newOrder, userId, order);
+    } catch (error) {
+      // Roll back the claimed usage if the order could not be created.
+      if (consumedPromoCode) {
+        await this.releasePromoUsage(consumedPromoCode).catch(() => undefined);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Resolve the order's owner (registered user or guest), persist the order
+   * with its lines and fire the confirmation email.
+   */
+  private async persistNewOrder(
+    newOrder: OrderEntity,
+    userId: string | null,
+    order: CreateOrderDTO,
+  ) {
+    const productIds = order.items.map((item) => item.productId);
+    const products = await this.productRepository.find({
+      where: { id: In(productIds) },
+    });
 
     if (userId) {
       newOrder.user = { id: userId } as any;
@@ -158,6 +330,17 @@ export class OrdersService {
       order.deliveryTime = new Date();
     }
 
+    // Cancelling an order frees its promo-code usage so the code can be
+    // reused (important for single/limited-use codes).
+    if (
+      nextStatus === OrderStatus.Cancelled &&
+      order.promoCodeConsumed &&
+      order.promoCode
+    ) {
+      await this.releasePromoUsage(order.promoCode);
+      order.promoCodeConsumed = false;
+    }
+
     return this.ordersRepo.save(order);
   }
 
@@ -190,7 +373,7 @@ export class OrdersService {
     }
 
     // Update simple scalar fields when provided.
-    const { items, ...fields } = dto;
+    const { items, promoCode, ...fields } = dto;
     Object.assign(order, fields);
 
     // Replace order lines and recompute the total when items are provided.
@@ -218,11 +401,53 @@ export class OrdersService {
         } as OrderEntity['items'][number];
       });
 
-      order.total = order.items.reduce(
+      order.subtotal = order.items.reduce(
         (sum, line) => sum + Number(line.price) * line.quantity,
         0,
       );
     }
+
+    // Resolve the promo code to apply: an explicit value replaces the current
+    // code, an empty string clears it, and `undefined` keeps the existing one.
+    let desiredCode = order.promoCode;
+    if (promoCode !== undefined) {
+      const trimmed = promoCode.trim();
+      desiredCode = trimmed ? (await this.resolvePromoCode(trimmed)).code : null;
+    }
+
+    const previousCode = order.promoCode;
+    const sameCode =
+      !!desiredCode &&
+      !!previousCode &&
+      desiredCode.toLowerCase() === previousCode.toLowerCase();
+
+    // Release the previously held usage when the code is removed or replaced.
+    if (order.promoCodeConsumed && !sameCode) {
+      await this.releasePromoUsage(previousCode);
+      order.promoCodeConsumed = false;
+    }
+
+    order.promoCode = desiredCode;
+
+    // Claim a usage slot for the (new) code if not already held by this order.
+    if (desiredCode && !order.promoCodeConsumed) {
+      const resolved = await this.resolvePromoCode(desiredCode);
+      this.assertPromoCodeAvailable(resolved);
+      await this.consumePromoUsage(resolved.id);
+      order.promoCodeConsumed = true;
+    }
+
+    // Recompute the discount and final total from the current subtotal and
+    // applied promo code (subtotal may have changed via `items`).
+    if (order.promoCode) {
+      const resolved = await this.resolvePromoCode(order.promoCode);
+      order.discount = this.calculateDiscount(Number(order.subtotal), resolved);
+    } else {
+      order.discount = 0;
+    }
+
+    order.total =
+      Math.round((Number(order.subtotal) - Number(order.discount)) * 100) / 100;
 
     await this.ordersRepo.save(order);
 
@@ -240,6 +465,11 @@ export class OrdersService {
 
     if (!order) {
       throw new NotFoundException(`Order ${id} not found`);
+    }
+
+    // Free the promo-code usage held by this order before removing it.
+    if (order.promoCodeConsumed && order.promoCode) {
+      await this.releasePromoUsage(order.promoCode);
     }
 
     await this.ordersRepo.remove(order);

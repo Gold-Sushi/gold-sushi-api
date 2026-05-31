@@ -7,10 +7,11 @@ import { OrdersService } from './orders.service';
 import { OrderEntity } from '@modules/orders/entities/order.entity';
 import { OrderDetailEntity } from '@modules/orders/entities/order-detail.entity';
 import { OrderOwnerGuard } from '@modules/orders/guards/order-owner.guard';
+import { Promocode } from '@modules/promotions/entities/promocode.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([OrderEntity, OrderDetailEntity, ProductEntity, UserEntity]),
+    TypeOrmModule.forFeature([OrderEntity, OrderDetailEntity, ProductEntity, UserEntity, Promocode]),
   ],
   controllers: [OrdersController],
   providers: [OrdersService, OrderOwnerGuard]

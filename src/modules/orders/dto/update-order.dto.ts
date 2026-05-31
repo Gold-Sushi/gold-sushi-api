@@ -65,6 +65,14 @@ export class UpdateOrderDTO {
   @IsEnum(DeliveryType)
   deliveryType?: DeliveryType;
 
+  /**
+   * Promo code to (re)apply to the order. Pass an empty string to remove a
+   * previously applied promo code. When omitted the existing code is kept.
+   */
+  @IsOptional()
+  @IsString()
+  promoCode?: string;
+
   @IsOptional()
   @IsDateString()
   deliveryScheduleTime?: string;

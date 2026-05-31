@@ -49,6 +49,11 @@ export class CreateOrderDTO {
   deliveryType: DeliveryType;
 
   @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  promoCode?: string;
+
+  @IsOptional()
   @IsDateString()
   deliveryScheduleTime?: string;
 

@@ -27,6 +27,25 @@ export class OrderEntity {
   @Column({ type: 'int', default: OrderStatus.New })
   status: string;
 
+  // Sum of the order lines before any discount is applied.
+  @Column('decimal', { precision: 12, scale: 2, default: 0 })
+  subtotal: number;
+
+  // The promo code applied to the order (if any).
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  promoCode: string | null;
+
+  // Whether this order currently holds a usage slot of its promo code. Set when
+  // the code is applied and cleared when the order is cancelled/deleted so the
+  // usage is released back for limited-use codes.
+  @Column({ type: 'boolean', default: false })
+  promoCodeConsumed: boolean;
+
+  // The monetary discount granted by the applied promo code.
+  @Column('decimal', { precision: 12, scale: 2, default: 0 })
+  discount: number;
+
+  // Final payable amount: subtotal - discount.
   @Column('decimal', { precision: 12, scale: 2, default: 0 })
   total: number;
 

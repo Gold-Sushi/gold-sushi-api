@@ -6,6 +6,7 @@ import { RolesGuard } from '@common/guards/roles.guard';
 import { CreateOrderDTO } from '@modules/orders/dto/create-order.dto';
 import { UpdateOrderDTO } from '@modules/orders/dto/update-order.dto';
 import { UpdateOrderStatusDTO } from '@modules/orders/dto/update-order-status.dto';
+import { ApplyPromoCodeDTO } from '@modules/orders/dto/apply-promo-code.dto';
 import { OrdersService } from '@modules/orders/orders.service';
 import { OrderOwnerGuard } from '@modules/orders/guards/order-owner.guard';
 import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
@@ -35,6 +36,17 @@ export class OrdersController {
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
   createOrder(@Req() req, @Body() createOrderDto: CreateOrderDTO) {
     return this.ordersService.createOrder(req.user?.id ?? null, createOrderDto);
+  }
+
+  @Post('promo-code/apply')
+  @ApiOperation({
+    summary: 'Validate / preview a promo code',
+    description:
+      'Public endpoint. Checks that a promo code exists and is not expired and returns the discount it would grant for the provided subtotal.',
+  })
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  applyPromoCode(@Body() dto: ApplyPromoCodeDTO) {
+    return this.ordersService.previewPromoCode(dto.code, dto.subtotal ?? 0);
   }
 
   @Get('all')
