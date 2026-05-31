@@ -2,6 +2,7 @@ import { CartModule } from '@modules/cart/cart.module';
 import { OrdersModule } from '@modules/orders/orders.module';
 import { PaymentsModule } from '@modules/payments/payments.module';
 import { PromotionsModule } from '@modules/promotions/promotions.module';
+import { StatisticsModule } from '@modules/statistics/statistics.module';
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
@@ -38,6 +39,7 @@ import { MailModule } from './mail/mail.module';
     PromotionsModule,
     OrdersModule,
     PaymentsModule,
+    StatisticsModule,
     MailModule,
   ],
   controllers: [],
