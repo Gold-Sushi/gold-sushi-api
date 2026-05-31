@@ -59,6 +59,7 @@ export class OrderEntity {
 
   @OneToMany(() => OrderDetailEntity, (orderDetail) => orderDetail.order, {
     cascade: true,
+    orphanedRowAction: 'delete',
   })
   items: OrderDetailEntity[];
 }

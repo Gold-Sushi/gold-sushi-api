@@ -4,6 +4,8 @@ import { Roles } from '@common/decorators/roles.decorator';
 import { UserRole } from '@common/enums/UserRole';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { CreateOrderDTO } from '@modules/orders/dto/create-order.dto';
+import { UpdateOrderDTO } from '@modules/orders/dto/update-order.dto';
+import { UpdateOrderStatusDTO } from '@modules/orders/dto/update-order-status.dto';
 import { OrdersService } from '@modules/orders/orders.service';
 import { OrderOwnerGuard } from '@modules/orders/guards/order-owner.guard';
 import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
@@ -29,18 +31,31 @@ export class OrdersController {
     return this.ordersService.getAllOrders();
   }
 
+  @Patch(':id/status')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Admin)
+  updateOrderStatus(
+    @Param('id') id: string,
+    @Body() updateOrderStatusDto: UpdateOrderStatusDTO,
+  ) {
+    return this.ordersService.updateOrderStatus(id, updateOrderStatusDto.status);
+  }
+
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)
-  updateOrder() {
-    // Logic to update an order
+  updateOrder(
+    @Param('id') id: string,
+    @Body() updateOrderDto: UpdateOrderDTO,
+  ) {
+    return this.ordersService.updateOrder(id, updateOrderDto);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)
-  deleteOrder() {
-    // Logic to delete an order
+  deleteOrder(@Param('id') id: string) {
+    return this.ordersService.deleteOrder(id);
   }
 
   @Get(':id')
