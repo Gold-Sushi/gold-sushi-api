@@ -1,3 +1,5 @@
+import { CourierOrderItemDto } from './courier-order-item.dto';
+
 /**
  * Trimmed view of an order exposed to the assigned courier.
  *
@@ -25,11 +27,7 @@ export class CourierOrderDto {
     phone: string;
     email: string;
   } | null;
-  items: Array<{
-    title: string | null;
-    quantity: number;
-    price: number;
-  }>;
+  items: CourierOrderItemDto[];
 
   static fromEntity(order: any): CourierOrderDto {
     const dto = new CourierOrderDto();
@@ -53,11 +51,13 @@ export class CourierOrderDto {
           email: order.user.email,
         }
       : null;
-    dto.items = (order.items ?? []).map((item: any) => ({
-      title: item.product?.title ?? null,
-      quantity: item.quantity,
-      price: Number(item.price),
-    }));
+    dto.items = (order.items ?? []).map((item: any) => {
+      const itemDto = new CourierOrderItemDto();
+      itemDto.title = item.product?.title ?? null;
+      itemDto.quantity = item.quantity;
+      itemDto.price = Number(item.price);
+      return itemDto;
+    });
     return dto;
   }
 }
