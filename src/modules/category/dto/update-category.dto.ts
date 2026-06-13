@@ -4,11 +4,11 @@ import { IsOptional, IsString, IsArray } from 'class-validator';
 export class UpdateCategoryDto {
   @IsOptional()
   @IsString()
-  title?: string;
+ title?: string;
 
   @IsOptional()
   @IsString()
-  slug: string;
+  slug?: string;
 
   @IsOptional()
   @IsString()
