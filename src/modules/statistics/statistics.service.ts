@@ -187,14 +187,17 @@ export class StatisticsService {
       .createQueryBuilder('detail')
       .innerJoin('detail.order', 'o')
       .leftJoin('detail.product', 'product')
+      .leftJoin('product.image', 'image')
       .select('product.id', 'productId')
       .addSelect('product.title', 'name')
+      .addSelect('image.url', 'image')
       .addSelect('COALESCE(SUM(detail.quantity), 0)', 'quantitySold')
       .addSelect('COALESCE(SUM(detail.quantity * detail.price), 0)', 'revenue')
       .where(this.earnedPredicate())
       .setParameters(this.earnedParams())
       .groupBy('product.id')
       .addGroupBy('product.title')
+      .addGroupBy('image.url')
       .orderBy('"quantitySold"', 'DESC')
       .limit(limit);
 
@@ -203,6 +206,7 @@ export class StatisticsService {
     const rows = await qb.getRawMany<{
       productId: string | null;
       name: string | null;
+      image: string | null;
       quantitySold: string;
       revenue: string;
     }>();
@@ -210,6 +214,7 @@ export class StatisticsService {
     return rows.map((row) => ({
       productId: row.productId,
       name: row.name,
+      image: row.image,
       quantitySold: this.toInt(row.quantitySold),
       revenue: this.toFloat(row.revenue),
     }));

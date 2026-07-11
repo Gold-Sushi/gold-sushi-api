@@ -78,6 +78,8 @@ export interface HourStatsRow {
 export interface TopProductRow {
   productId: string | null;
   name: string | null;
+  /** Product image URL, if the product still has one attached. */
+  image: string | null;
   /** Total units sold across all orders in the period. */
   quantitySold: number;
   /** Revenue attributed to the product (Σ quantity × price). */
