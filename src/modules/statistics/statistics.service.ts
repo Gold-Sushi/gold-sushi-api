@@ -190,14 +190,22 @@ export class StatisticsService {
       .leftJoin('product.image', 'image')
       .select('product.id', 'productId')
       .addSelect('product.title', 'name')
-      .addSelect('image.url', 'image')
+      .addSelect('image.public_id', 'imagePublicId')
+      .addSelect('image.asset_id', 'imageAssetId')
+      .addSelect('image.url', 'imageUrl')
+      .addSelect('image.width', 'imageWidth')
+      .addSelect('image.height', 'imageHeight')
       .addSelect('COALESCE(SUM(detail.quantity), 0)', 'quantitySold')
       .addSelect('COALESCE(SUM(detail.quantity * detail.price), 0)', 'revenue')
       .where(this.earnedPredicate())
       .setParameters(this.earnedParams())
       .groupBy('product.id')
       .addGroupBy('product.title')
+      .addGroupBy('image.public_id')
+      .addGroupBy('image.asset_id')
       .addGroupBy('image.url')
+      .addGroupBy('image.width')
+      .addGroupBy('image.height')
       .orderBy('"quantitySold"', 'DESC')
       .limit(limit);
 
@@ -206,7 +214,11 @@ export class StatisticsService {
     const rows = await qb.getRawMany<{
       productId: string | null;
       name: string | null;
-      image: string | null;
+      imagePublicId: string | null;
+      imageAssetId: string | null;
+      imageUrl: string | null;
+      imageWidth: number | null;
+      imageHeight: number | null;
       quantitySold: string;
       revenue: string;
     }>();
@@ -214,7 +226,15 @@ export class StatisticsService {
     return rows.map((row) => ({
       productId: row.productId,
       name: row.name,
-      image: row.image,
+      image: row.imagePublicId
+        ? {
+            public_id: row.imagePublicId,
+            asset_id: row.imageAssetId,
+            url: row.imageUrl,
+            width: this.toInt(row.imageWidth),
+            height: this.toInt(row.imageHeight),
+          }
+        : null,
       quantitySold: this.toInt(row.quantitySold),
       revenue: this.toFloat(row.revenue),
     }));

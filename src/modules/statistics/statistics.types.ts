@@ -1,3 +1,4 @@
+import { CloudinaryImageEntity } from '@common/cloudinary/entities/image.entity';
 import { DeliveryType, OrderStatus, PaymentType } from '@common/enums/Order';
 
 /** Aggregated counter for a bucket of orders. */
@@ -78,8 +79,8 @@ export interface HourStatsRow {
 export interface TopProductRow {
   productId: string | null;
   name: string | null;
-  /** Product image URL, if the product still has one attached. */
-  image: string | null;
+  /** Product image, if the product still has one attached. */
+  image: Pick<CloudinaryImageEntity, 'public_id' | 'asset_id' | 'url' | 'width' | 'height'> | null;
   /** Total units sold across all orders in the period. */
   quantitySold: number;
   /** Revenue attributed to the product (Σ quantity × price). */
