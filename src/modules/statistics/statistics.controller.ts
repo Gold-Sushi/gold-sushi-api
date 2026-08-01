@@ -26,7 +26,7 @@ export class StatisticsController {
   @ApiOperation({
     summary: 'Monthly orders & revenue',
     description:
-      'Earned orders and revenue grouped by calendar month. Defaults to the last 12 months when no date range is provided. Requires the ADMIN role.',
+      'Earned orders and revenue grouped by calendar month. Every month in the range is returned, zero-filled when there were no orders. Defaults to the current year when no date range is provided (`endDate` defaults to now, `startDate` to January 1st of that year). Requires the ADMIN role.',
   })
   getMonthly(@Query() query: StatisticsQueryDTO) {
     return this.statisticsService.getMonthly(query);

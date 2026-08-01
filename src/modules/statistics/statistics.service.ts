@@ -25,6 +25,12 @@ interface DateRange {
   end: Date | null;
 }
 
+/** A reporting window with both bounds always resolved. */
+interface ClosedDateRange {
+  start: Date;
+  end: Date;
+}
+
 const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 @Injectable()
@@ -90,18 +96,13 @@ export class StatisticsService {
   }
 
   /**
-   * Orders and earned revenue grouped by calendar month. Defaults to the last
-   * 12 months when no explicit range is supplied.
+   * Orders and earned revenue grouped by calendar month. The range is always
+   * closed — `endDate` defaults to now and `startDate` to January 1st of that
+   * year — and every month in it is returned, including months without any
+   * earned orders (zero-filled).
    */
   async getMonthly(query: StatisticsQueryDTO): Promise<MonthlyStatsRow[]> {
-    let range = this.resolveRange(query);
-    if (!range.start && !range.end) {
-      const end = new Date();
-      const start = new Date(end);
-      start.setMonth(start.getMonth() - 11);
-      start.setDate(1);
-      range = { start: this.startOfDay(start), end };
-    }
+    const range = this.resolveMonthlyRange(query);
 
     const monthExpr = `to_char(o."createdAt" AT TIME ZONE :tz, 'YYYY-MM')`;
     const qb = this.earnedScope(range)
@@ -122,13 +123,18 @@ export class StatisticsService {
       nonCashCount: string;
     }>();
 
-    return rows.map((row) => ({
-      month: row.month,
-      orders: this.toInt(row.orders),
-      revenue: this.toFloat(row.revenue),
-      cashCount: this.toInt(row.cashCount),
-      nonCashCount: this.toInt(row.nonCashCount),
-    }));
+    const byMonth = new Map(rows.map((row) => [row.month, row]));
+
+    return this.enumerateMonths(range.start, range.end).map((month) => {
+      const row = byMonth.get(month);
+      return {
+        month,
+        orders: this.toInt(row?.orders),
+        revenue: this.toFloat(row?.revenue),
+        cashCount: this.toInt(row?.cashCount),
+        nonCashCount: this.toInt(row?.nonCashCount),
+      };
+    });
   }
 
   /** Earned orders/revenue grouped by ISO weekday (Monday → Sunday). */
@@ -384,6 +390,62 @@ export class StatisticsService {
       start: query.startDate ? this.startOfDay(new Date(query.startDate)) : null,
       end: query.endDate ? this.normalizeEnd(query.endDate) : null,
     };
+  }
+
+  /**
+   * Like `resolveRange`, but never leaves a bound open: the monthly series needs
+   * a closed window to know which months to zero-fill. Missing `endDate` means
+   * "up to now"; missing `startDate` means "from the start of the end bound's
+   * year".
+   */
+  private resolveMonthlyRange(query: StatisticsQueryDTO): ClosedDateRange {
+    const end = query.endDate ? this.normalizeEnd(query.endDate) : new Date();
+    const start = query.startDate ? this.startOfDay(new Date(query.startDate)) : this.startOfYear(end);
+    return { start, end };
+  }
+
+  /** Every `YYYY-MM` key between the two bounds, inclusive (reporting timezone). */
+  private enumerateMonths(start: Date, end: Date): string[] {
+    const last = this.monthKey(end);
+    const months: string[] = [];
+
+    let [year, month] = this.monthKey(start)
+      .split('-')
+      .map((part) => parseInt(part, 10));
+
+    for (let key = this.formatMonthKey(year, month); key <= last; key = this.formatMonthKey(year, month)) {
+      months.push(key);
+      if (month === 12) {
+        year += 1;
+        month = 1;
+      } else {
+        month += 1;
+      }
+    }
+
+    return months;
+  }
+
+  /** `YYYY-MM` bucket a timestamp falls into, matching the SQL grouping. */
+  private monthKey(date: Date): string {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: StatisticsService.REPORT_TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+    }).formatToParts(date);
+
+    const value = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
+    return `${value('year')}-${value('month')}`;
+  }
+
+  private formatMonthKey(year: number, month: number): string {
+    return `${year}-${String(month).padStart(2, '0')}`;
+  }
+
+  /** January 1st (local start of day) of the year the given date falls into. */
+  private startOfYear(date: Date): Date {
+    const year = parseInt(this.monthKey(date).slice(0, 4), 10);
+    return this.startOfDay(new Date(year, 0, 1));
   }
 
   /** Date-only end bounds are pushed to the end of that day so they stay inclusive. */
