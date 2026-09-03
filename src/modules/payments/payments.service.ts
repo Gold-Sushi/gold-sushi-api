@@ -8,10 +8,18 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OrderEntity } from '@modules/orders/entities/order.entity';
-import { PaymentStatus, PaymentType } from '@common/enums/Order';
+import {
+  canTransitionOrderStatus,
+  OrderStatus,
+  PaymentStatus,
+  PaymentType,
+} from '@common/enums/Order';
 import { MonobankService } from './monobank/monobank.service';
 import {
+  InvoiceStatusResponse,
+  MONOBANK_CCY_UAH,
   MonobankBasketItem,
+  MonobankDiscountItem,
   MonobankInvoiceStatus,
   WebhookPayload,
 } from './monobank/monobank.types';
@@ -22,9 +30,17 @@ export interface CreatePaymentResult {
   orderId: string;
 }
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Orchestrates online payments: it bridges our orders with the Monobank
  * acquiring gateway and keeps the order's payment status in sync.
+ *
+ * Status changes arrive through two channels — the signed webhook (primary)
+ * and status polling (fallback, and the only way to observe `expired`, which
+ * Monobank never delivers by webhook). Both funnel into `applyRemoteStatus`
+ * so the same ordering and consistency rules apply either way.
  */
 @Injectable()
 export class PaymentsService {
@@ -54,7 +70,7 @@ export class PaymentsService {
   ): Promise<CreatePaymentResult> {
     const order = await this.ordersRepo.findOne({
       where: { id: orderId },
-      relations: ['items', 'items.product'],
+      relations: ['items', 'items.product', 'user'],
     });
 
     if (!order) {
@@ -76,12 +92,18 @@ export class PaymentsService {
       throw new BadRequestException('Order amount must be greater than zero');
     }
 
+    // A previous attempt may still be payable — reconcile and retire it before
+    // issuing a replacement, so the customer can never pay an outdated invoice.
+    await this.retirePreviousInvoice(order);
+
     const invoice = await this.monobankService.createInvoice({
       amount,
       merchantPaymInfo: {
         reference: order.id,
         destination: `Оплата замовлення №${order.number}`,
         basketOrder: this.buildBasket(order),
+        discounts: this.buildDiscounts(order),
+        customerEmails: order.user?.email ? [order.user.email] : undefined,
       },
       redirectUrl: redirectUrl ?? this.defaultRedirectUrl(),
       webHookUrl: this.webhookUrl(),
@@ -90,6 +112,7 @@ export class PaymentsService {
 
     order.invoiceId = invoice.invoiceId;
     order.paymentStatus = PaymentStatus.Created;
+    order.paymentModifiedDate = null;
     await this.ordersRepo.save(order);
 
     this.logger.log(
@@ -105,15 +128,11 @@ export class PaymentsService {
 
   /**
    * Handles a verified Monobank webhook payload by syncing the order's
-   * payment status. Idempotent: replays of the same status are no-ops.
+   * payment status. Idempotent: replays of the same status are no-ops, and
+   * out-of-order deliveries are discarded.
    */
   async handleWebhook(payload: WebhookPayload): Promise<void> {
-    // Prefer the invoiceId, fall back to our reference (order id).
-    const order = await this.ordersRepo.findOne({
-      where: payload.invoiceId
-        ? { invoiceId: payload.invoiceId }
-        : { id: payload.reference },
-    });
+    const order = await this.findOrderForPayload(payload);
 
     if (!order) {
       this.logger.warn(
@@ -122,17 +141,7 @@ export class PaymentsService {
       return;
     }
 
-    const newStatus = this.mapStatus(payload.status);
-    if (order.paymentStatus === newStatus) {
-      return;
-    }
-
-    order.paymentStatus = newStatus;
-    await this.ordersRepo.save(order);
-
-    this.logger.log(
-      `Order ${order.id} payment status updated to "${newStatus}" (invoice ${payload.invoiceId})`,
-    );
+    await this.applyRemoteStatus(order, payload);
   }
 
   /**
@@ -149,16 +158,12 @@ export class PaymentsService {
       throw new NotFoundException('Order not found');
     }
 
-    if (order.invoiceId) {
+    if (order.invoiceId && !this.isFinalPaymentStatus(order.paymentStatus)) {
       try {
         const remote = await this.monobankService.getInvoiceStatus(
           order.invoiceId,
         );
-        const mapped = this.mapStatus(remote.status);
-        if (mapped !== order.paymentStatus) {
-          order.paymentStatus = mapped;
-          await this.ordersRepo.save(order);
-        }
+        await this.applyRemoteStatus(order, remote);
       } catch (error) {
         // Don't fail the read if Monobank is temporarily unavailable.
         this.logger.warn(
@@ -176,20 +181,214 @@ export class PaymentsService {
     };
   }
 
+  /**
+   * Applies an invoice state received from Monobank (webhook or polling) to
+   * an order.
+   *
+   * Webhook delivery is retried and therefore unordered, so a stale payload
+   * must never undo a newer one: updates older than the last one we recorded
+   * are dropped, and a settled payment can only ever move on to `reversed`.
+   */
+  private async applyRemoteStatus(
+    order: OrderEntity,
+    remote: InvoiceStatusResponse,
+  ): Promise<void> {
+    const modifiedDate = remote.modifiedDate
+      ? new Date(remote.modifiedDate)
+      : null;
+    const isStale =
+      modifiedDate !== null &&
+      order.paymentModifiedDate !== null &&
+      order.paymentModifiedDate !== undefined &&
+      modifiedDate.getTime() < new Date(order.paymentModifiedDate).getTime();
+
+    if (isStale) {
+      this.logger.warn(
+        `Ignoring stale ${remote.status} update for order ${order.id} (invoice ${remote.invoiceId})`,
+      );
+      return;
+    }
+
+    const nextStatus = this.mapStatus(remote.status);
+    const statusChanged =
+      nextStatus !== order.paymentStatus &&
+      this.canTransitionPayment(order.paymentStatus, nextStatus);
+
+    if (nextStatus !== order.paymentStatus && !statusChanged) {
+      this.logger.warn(
+        `Refused to move order ${order.id} from settled payment status "${order.paymentStatus}" to "${nextStatus}"`,
+      );
+    }
+
+    const dateAdvanced =
+      modifiedDate !== null &&
+      modifiedDate.getTime() !==
+        (order.paymentModifiedDate
+          ? new Date(order.paymentModifiedDate).getTime()
+          : 0);
+
+    if (!statusChanged && !dateAdvanced) {
+      return;
+    }
+
+    if (statusChanged) {
+      order.paymentStatus = nextStatus;
+    }
+    if (modifiedDate) {
+      order.paymentModifiedDate = modifiedDate;
+    }
+    await this.ordersRepo.save(order);
+
+    if (!statusChanged) {
+      return;
+    }
+
+    this.logger.log(
+      `Order ${order.id} payment status updated to "${nextStatus}" (invoice ${remote.invoiceId})`,
+    );
+
+    if (nextStatus === PaymentStatus.Success) {
+      await this.onPaymentSucceeded(order, remote);
+    }
+  }
+
+  /**
+   * Fulfilment step for a settled payment: the paid order moves out of `New`
+   * so it enters the kitchen workflow.
+   *
+   * A payment whose amount does not match the order is recorded but never
+   * auto-fulfilled — that combination means the order changed after the
+   * invoice was issued and needs a human to look at it.
+   */
+  private async onPaymentSucceeded(
+    order: OrderEntity,
+    remote: InvoiceStatusResponse,
+  ): Promise<void> {
+    const expected = this.toKopecks(Number(order.total));
+    const paid = remote.finalAmount ?? remote.amount;
+
+    if (
+      (paid != null && paid !== expected) ||
+      (remote.ccy != null && remote.ccy !== MONOBANK_CCY_UAH)
+    ) {
+      this.logger.error(
+        `Order ${order.id} was paid ${paid} (ccy ${remote.ccy}) but expects ${expected} (ccy ${MONOBANK_CCY_UAH}) — needs manual review`,
+      );
+      return;
+    }
+
+    const currentStatus = Number(order.status) as OrderStatus;
+    if (!canTransitionOrderStatus(currentStatus, OrderStatus.Processing)) {
+      return;
+    }
+
+    order.status = OrderStatus.Processing as unknown as string;
+    await this.ordersRepo.save(order);
+
+    this.logger.log(`Order ${order.id} moved to Processing after payment`);
+  }
+
+  /**
+   * Reconciles the invoice of a previous payment attempt before a new one is
+   * started: an already-settled invoice is synced back onto the order, and a
+   * still-payable one is invalidated so it cannot be paid afterwards.
+   */
+  private async retirePreviousInvoice(order: OrderEntity): Promise<void> {
+    if (!order.invoiceId) {
+      return;
+    }
+
+    const previousInvoiceId = order.invoiceId;
+
+    try {
+      const remote = await this.monobankService.getInvoiceStatus(
+        previousInvoiceId,
+      );
+      await this.applyRemoteStatus(order, remote);
+
+      if (remote.status === 'success' || remote.status === 'hold') {
+        throw new BadRequestException('This order has already been paid');
+      }
+
+      if (remote.status === 'created' || remote.status === 'processing') {
+        await this.monobankService.removeInvoice(previousInvoiceId);
+        this.logger.log(
+          `Invalidated stale invoice ${previousInvoiceId} for order ${order.id}`,
+        );
+      }
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      // A gateway hiccup must not block a customer from paying.
+      this.logger.warn(
+        `Could not retire invoice ${previousInvoiceId} for order ${order.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  /** Resolves the order a webhook payload belongs to. */
+  private async findOrderForPayload(
+    payload: WebhookPayload,
+  ): Promise<OrderEntity | null> {
+    if (payload.invoiceId) {
+      const byInvoice = await this.ordersRepo.findOne({
+        where: { invoiceId: payload.invoiceId },
+      });
+      if (byInvoice) {
+        return byInvoice;
+      }
+    }
+
+    // Fall back to our own reference — but only when it is shaped like an id,
+    // so a malformed value can't blow up the query.
+    if (payload.reference && UUID_PATTERN.test(payload.reference)) {
+      return this.ordersRepo.findOne({ where: { id: payload.reference } });
+    }
+
+    return null;
+  }
+
   /** Builds the basket shown on the Monobank payment page. */
   private buildBasket(order: OrderEntity): MonobankBasketItem[] {
-    return (order.items ?? []).map((item) => {
+    return (order.items ?? []).map((item, index) => {
+      const qty = Number(item.quantity) || 0;
       const unitSum = this.toKopecks(Number(item.price));
-      return {
+
+      const basketItem: MonobankBasketItem = {
         name: item.product?.title ?? 'Товар',
-        qty: item.quantity,
+        qty,
         sum: unitSum,
-        total: unitSum * item.quantity,
+        total: unitSum * qty,
         unit: 'шт.',
-        code: item.product?.id,
-        icon: item.product?.image?.url,
+        // `code` is required by the API — fall back to a deterministic line
+        // code when the product row has been removed.
+        code: item.product?.id ?? `${order.id}-${index + 1}`,
       };
+
+      const icon = item.product?.image?.url;
+      if (icon) {
+        basketItem.icon = icon;
+      }
+
+      return basketItem;
     });
+  }
+
+  /**
+   * Cart-level discount, so the basket lines (which carry full prices) still
+   * add up to the `amount` we charge.
+   */
+  private buildDiscounts(
+    order: OrderEntity,
+  ): MonobankDiscountItem[] | undefined {
+    const discount = this.toKopecks(Number(order.discount) || 0);
+    if (discount <= 0) {
+      return undefined;
+    }
+    return [{ type: 'DISCOUNT', mode: 'VALUE', value: discount }];
   }
 
   /** Maps Monobank invoice statuses onto our internal PaymentStatus enum. */
@@ -212,6 +411,32 @@ export class PaymentsService {
       default:
         return PaymentStatus.Processing;
     }
+  }
+
+  /**
+   * A settled payment must not be walked back by a late update. `failure` is
+   * deliberately not settled: the customer can retry on the same invoice.
+   */
+  private canTransitionPayment(
+    current: PaymentStatus,
+    next: PaymentStatus,
+  ): boolean {
+    switch (current) {
+      case PaymentStatus.Success:
+        return next === PaymentStatus.Reversed;
+      case PaymentStatus.Reversed:
+      case PaymentStatus.Expired:
+        return false;
+      default:
+        return true;
+    }
+  }
+
+  /** True when no further update can be expected for this payment. */
+  private isFinalPaymentStatus(status: PaymentStatus): boolean {
+    return (
+      status === PaymentStatus.Reversed || status === PaymentStatus.Expired
+    );
   }
 
   /** Converts a hryvnia amount into integer kopecks expected by Monobank. */
@@ -239,5 +464,3 @@ export class PaymentsService {
       : undefined;
   }
 }
-
-

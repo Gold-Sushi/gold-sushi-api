@@ -59,6 +59,11 @@ export class OrderEntity {
   @Column({ type: 'varchar', length: 255, nullable: true })
   invoiceId: string | null;
 
+  // `modifiedDate` of the last invoice update we applied. Webhook deliveries
+  // are retried and therefore unordered — this lets us drop stale ones.
+  @Column({ type: 'timestamptz', nullable: true })
+  paymentModifiedDate: Date | null;
+
   @Column({ type: 'enum', enum: DeliveryType })
   deliveryType: DeliveryType;
 

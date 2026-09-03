@@ -164,15 +164,16 @@ Add the following variables to your `.env` (see `.env.example`):
 
 | Variable | Description |
 | --- | --- |
-| `MONOBANK_TOKEN` | Merchant token from the Monobank web cabinet (Acquiring → API token). **Required.** |
+| `MONOBANK_TOKEN` | Merchant token. Test token: <https://api.monobank.ua/> (QR login in the monobank app). Live token: <https://web.monobank.ua/> → Мерчант → API token. **Required.** |
 | `MONOBANK_API_URL` | API base URL. Defaults to `https://api.monobank.ua`. |
-| `MONOBANK_INVOICE_VALIDITY` | Invoice lifetime in seconds. Defaults to `3600`. |
+| `MONOBANK_INVOICE_VALIDITY` | Invoice lifetime in seconds. Defaults to `3600` (Monobank's own default is 24h). |
 | `PUBLIC_API_URL` | Publicly reachable base URL of this API, used to build the webhook URL. |
 | `MONOBANK_WEBHOOK_URL` | Explicit webhook URL. Overrides the value derived from `PUBLIC_API_URL`. |
 | `PAYMENT_REDIRECT_URL` | Where the customer is redirected after paying. Falls back to `FRONTEND_URL`. |
 
 > The webhook endpoint must be reachable from the public internet for Monobank
-> to deliver payment status updates.
+> to deliver payment status updates. For local development expose it with a
+> tunnel (e.g. `ngrok http 4200`) and point `PUBLIC_API_URL` at the tunnel URL.
 
 ### Payment flow
 
@@ -184,9 +185,13 @@ Add the following variables to your `.env` (see `.env.example`):
    ```
 
    Returns `{ invoiceId, pageUrl, orderId }`. Redirect the customer to `pageUrl`.
+   If the order already has an unpaid invoice it is invalidated first, so an
+   abandoned payment page can never be completed after a retry.
 3. Monobank notifies the API about status changes via a signed webhook
-   (`POST /api/payments/monobank/webhook`). The signature (`X-Sign` header) is
-   verified against the Monobank public key before the order is updated.
+   (`POST /api/payments/monobank/webhook`). The ECDSA `X-Sign` header is
+   verified over the raw request bytes against the merchant public key
+   (`GET /api/merchant/pubkey`, cached and refetched once on a failed check)
+   before the order is touched.
 4. Poll or read the latest status (also refreshed from Monobank) with:
 
    ```http
@@ -197,6 +202,34 @@ Add the following variables to your `.env` (see `.env.example`):
 
 The order's `paymentStatus` reflects the Monobank invoice lifecycle:
 `none → created → processing → hold → success | failure | reversed | expired`.
+
+Two things the webhook alone does not cover, both handled by the status
+endpoint: `expired` is **never** delivered by webhook, and a refund
+(`reversed`) can arrive long after the order settled — so the status endpoint
+keeps polling even for paid orders.
+
+Once a payment reaches `success` the order is moved from `New` to `Processing`
+automatically. A payment whose amount or currency does not match the order is
+still recorded, but never auto-advances the order — it is logged as an error
+for manual review.
+
+### Testing the integration
+
+```bash
+# talks to the Monobank sandbox directly — no DB or app boot needed.
+# Checks the token, fetches the webhook public key, creates an invoice,
+# prints the payment page URL and polls until a terminal status.
+npm run pay:test
+```
+
+Full loop including webhooks:
+
+1. `ngrok http 4200`, then set `PUBLIC_API_URL` to the https tunnel URL.
+2. Start the API (`npm run start:dev`) and place an order with `paymentType: 2`.
+3. `POST /api/payments/monobank/create/:orderId`, open the returned `pageUrl`
+   and pay with a sandbox card.
+4. Watch the logs for `Order <id> payment status updated to "success"` and
+   confirm with `GET /api/payments/monobank/status/:orderId`.
 
 ## Test
 
