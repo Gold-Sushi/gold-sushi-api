@@ -20,7 +20,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "mail:preview": "node scripts/preview-emails.js --open",
     "mail:test": "node scripts/send-test-email.js",
-    "pay:test": "node --env-file-if-exists=.env scripts/test-monobank-payment.js"
+    "pay:test": "node --env-file-if-exists=.env scripts/test-monobank-payment.js",
+    "monopay:keys": "node --env-file-if-exists=.env scripts/generate-monopay-keys.js"
   },
   "engines": {
     "node": ">=20"

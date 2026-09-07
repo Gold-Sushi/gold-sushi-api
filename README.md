@@ -170,6 +170,9 @@ Add the following variables to your `.env` (see `.env.example`):
 | `PUBLIC_API_URL` | Publicly reachable base URL of this API, used to build the webhook URL. |
 | `MONOBANK_WEBHOOK_URL` | Explicit webhook URL. Overrides the value derived from `PUBLIC_API_URL`. |
 | `PAYMENT_REDIRECT_URL` | Where the customer is redirected after paying. Falls back to `FRONTEND_URL`. |
+| `MONOPAY_PRIVATE_KEY` | ECDSA P-256 private key (PKCS#8 PEM, `\n` allowed) signing the monopay button data. Required for the button only. |
+| `MONOPAY_KEY_ID` | Id of the signing key from `/api/merchant/monopay/pubkey-list`. Needed only when several keys are imported. |
+| `PAYMENT_SUCCESS_URL` / `PAYMENT_FAIL_URL` | Per-outcome return URLs, used by the monopay button only. |
 
 > The webhook endpoint must be reachable from the public internet for Monobank
 > to deliver payment status updates. For local development expose it with a
@@ -212,6 +215,65 @@ Once a payment reaches `success` the order is moved from `New` to `Processing`
 automatically. A payment whose amount or currency does not match the order is
 still recorded, but never auto-advances the order — it is logged as an error
 for manual review.
+
+### monopay button (JS widget)
+
+The [monopay button](https://monobank.ua/api-docs/acquiring/methods/monopay/docs--js-widget)
+is the same acquiring flow without the redirect: the invoice is created by
+Monobank when the customer clicks, out of order data that travels through the
+browser. That data is trustworthy only because the backend signs it, so the
+private key stays here and never reaches the frontend.
+
+One-time setup:
+
+```bash
+# generates an ECDSA P-256 pair, imports the public half into Monobank and
+# prints the key list; drop the private key into .env as MONOPAY_PRIVATE_KEY
+npm run monopay:keys -- --import --name "goldsushi"
+
+# what is already registered for the token in .env
+npm run monopay:keys -- --list
+```
+
+Then, for an order with `paymentType: 2`:
+
+```http
+POST /api/payments/monopay/init/:orderId
+```
+
+Returns `{ keyId, signature, requestId, payloadBase64, expiresAt }` — the
+signature covers `JSON.stringify(payload) + requestId` (SHA-256, ECDSA P-256,
+base64 DER) and `payloadBase64` carries those exact bytes. Mount it with:
+
+```html
+<script src="https://pay.monobank.ua/mono-pay-button/v1/mono-pay-button.js"></script>
+<script>
+  const data = await fetch(`/api/payments/monopay/init/${orderId}`, {
+    method: 'POST',
+  }).then((r) => r.json());
+
+  const { button } = window.MonoPay.init({
+    keyId: data.keyId,
+    signature: data.signature,
+    requestId: data.requestId,
+    payloadBase64: data.payloadBase64,
+    ui: { buttonType: 'pay', theme: 'dark', corners: 'rounded' },
+  });
+  document.getElementById('payment-container').appendChild(button);
+</script>
+```
+
+`requestId` is the idempotency key of the click and lives for 10 minutes
+(`expiresAt` says until when) — re-initialising the widget with different data
+for the same checkout is not allowed, so calling the endpoint again for an
+unchanged order hands the same set back, and only a changed order (amount,
+basket) produces a new one.
+
+The result arrives on the **same** webhook as the hosted page
+(`POST /api/payments/monobank/webhook`), matched to the order by the
+`reference` we signed into the payload; the invoice id is recorded from that
+first delivery, after which `GET /api/payments/monobank/status/:orderId` works
+as usual.
 
 ### Testing the integration
 

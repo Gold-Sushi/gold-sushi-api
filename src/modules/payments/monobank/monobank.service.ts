@@ -20,6 +20,10 @@ import {
   MONOBANK_CCY_UAH,
   MonobankErrorResponse,
 } from './monobank.types';
+import {
+  MonoPayPubKeyListResponse,
+  MonoPaySigningKey,
+} from '../monopay/monopay.types';
 
 /**
  * Thin, well-typed client around the Monobank Acquiring REST API.
@@ -137,6 +141,27 @@ export class MonobankService {
       return data;
     } catch (error) {
       throw this.toHttpException(error, 'Failed to fetch Monobank merchant details');
+    }
+  }
+
+  /**
+   * Lists the ids of the keys the merchant imported for signing monopay
+   * button requests. The list only changes when a key is imported or removed,
+   * so callers are expected to cache it.
+   *
+   * @see https://monobank.ua/api-docs/acquiring/methods/monopay/get--api--merchant--monopay--pubkey-list
+   */
+  async getMonoPayKeyIds(): Promise<string[]> {
+    try {
+      const { data } = await this.http.get<MonoPayPubKeyListResponse>(
+        '/api/merchant/monopay/pubkey-list',
+      );
+      return extractKeyIds(data);
+    } catch (error) {
+      throw this.toHttpException(
+        error,
+        'Failed to fetch the monopay signing key list',
+      );
     }
   }
 
@@ -298,6 +323,35 @@ export class MonobankService {
     }
     return new BadGatewayException(message);
   }
+}
+
+/**
+ * Pulls the key ids out of the monopay key list.
+ *
+ * The response sample is not published in the API documentation, so the
+ * shapes it could reasonably take — a bare array or a wrapped list, of plain
+ * strings or of objects — are all handled instead of guessed at.
+ */
+function extractKeyIds(data: MonoPayPubKeyListResponse): string[] {
+  const list: unknown = Array.isArray(data)
+    ? data
+    : (data?.list ?? data?.keys ?? data?.data);
+
+  if (!Array.isArray(list)) {
+    return [];
+  }
+
+  return list
+    .map((entry) =>
+      typeof entry === 'string'
+        ? entry
+        : ((entry as MonoPaySigningKey)?.keyId ??
+          (entry as MonoPaySigningKey)?.id),
+    )
+    .filter(
+      (keyId): keyId is string =>
+        typeof keyId === 'string' && keyId.length > 0,
+    );
 }
 
 /** Drops `undefined` keys so we never send empty fields to the gateway. */

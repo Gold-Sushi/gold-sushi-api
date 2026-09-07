@@ -15,7 +15,13 @@ import {
   PaymentType,
 } from '@common/enums/Order';
 import { MonobankService } from './monobank/monobank.service';
+import { MonoPayService } from './monopay/monopay.service';
 import {
+  MonoPayWidgetInit,
+  MonoPayWidgetPayload,
+} from './monopay/monopay.types';
+import {
+  CreateInvoiceRequest,
   InvoiceStatusResponse,
   MONOBANK_CCY_UAH,
   MonobankBasketItem,
@@ -53,6 +59,7 @@ export class PaymentsService {
     @InjectRepository(OrderEntity)
     private readonly ordersRepo: Repository<OrderEntity>,
     private readonly monobankService: MonobankService,
+    private readonly monoPayService: MonoPayService,
     private readonly configService: ConfigService,
   ) {
     this.invoiceValidity = Number(
@@ -68,47 +75,15 @@ export class PaymentsService {
     orderId: string,
     redirectUrl?: string,
   ): Promise<CreatePaymentResult> {
-    const order = await this.ordersRepo.findOne({
-      where: { id: orderId },
-      relations: ['items', 'items.product', 'user'],
-    });
-
-    if (!order) {
-      throw new NotFoundException('Order not found');
-    }
-
-    if (order.paymentType !== PaymentType.Online) {
-      throw new BadRequestException(
-        'This order is not configured for online payment',
-      );
-    }
-
-    if (order.paymentStatus === PaymentStatus.Success) {
-      throw new BadRequestException('This order has already been paid');
-    }
-
-    const amount = this.toKopecks(Number(order.total));
-    if (amount <= 0) {
-      throw new BadRequestException('Order amount must be greater than zero');
-    }
+    const { order, amount } = await this.loadPayableOrder(orderId);
 
     // A previous attempt may still be payable — reconcile and retire it before
     // issuing a replacement, so the customer can never pay an outdated invoice.
     await this.retirePreviousInvoice(order);
 
-    const invoice = await this.monobankService.createInvoice({
-      amount,
-      merchantPaymInfo: {
-        reference: order.id,
-        destination: `Оплата замовлення №${order.number}`,
-        basketOrder: this.buildBasket(order),
-        discounts: this.buildDiscounts(order),
-        customerEmails: order.user?.email ? [order.user.email] : undefined,
-      },
-      redirectUrl: redirectUrl ?? this.defaultRedirectUrl(),
-      webHookUrl: this.webhookUrl(),
-      validity: this.invoiceValidity,
-    });
+    const invoice = await this.monobankService.createInvoice(
+      this.buildInvoicePayload(order, amount, redirectUrl),
+    );
 
     order.invoiceId = invoice.invoiceId;
     order.paymentStatus = PaymentStatus.Created;
@@ -127,6 +102,57 @@ export class PaymentsService {
   }
 
   /**
+   * Prepares the data the monopay button needs to be mounted for an order.
+   *
+   * Nothing is created on the gateway here: the invoice comes into existence
+   * only when the customer clicks the button, out of the payload we sign. The
+   * signature is what makes that safe — the browser can pass the payload on
+   * but cannot alter the amount or the basket inside it.
+   *
+   * @see https://monobank.ua/api-docs/acquiring/methods/monopay/docs--js-widget
+   */
+  async initMonoPayWidget(
+    orderId: string,
+    redirectUrl?: string,
+  ): Promise<MonoPayWidgetInit> {
+    const { order, amount } = await this.loadPayableOrder(orderId);
+
+    const payload: MonoPayWidgetPayload = {
+      ...this.buildInvoicePayload(order, amount, redirectUrl),
+      // Only the widget knows the outcome of the payment before the customer
+      // comes back, so it can route them per result instead of to one page.
+      successUrl: this.configService.get<string>('PAYMENT_SUCCESS_URL'),
+      failUrl: this.configService.get<string>('PAYMENT_FAIL_URL'),
+    };
+
+    // The signature covers this exact string and `payloadBase64` must carry
+    // the very same bytes, so the payload is serialised once and used twice.
+    const payloadJson = JSON.stringify(payload);
+
+    // Re-initialising the widget with different data for the same checkout is
+    // not allowed, so an unexpired set for an unchanged order is handed back.
+    const cached = this.monoPayService.peekWidgetPayment(order.id, payloadJson);
+    if (cached) {
+      return cached;
+    }
+
+    // Same reasoning as in the hosted-page flow: an invoice from an earlier
+    // attempt must not stay payable next to the one about to be created.
+    await this.retirePreviousInvoice(order);
+
+    const init = await this.monoPayService.createWidgetPayment(
+      order.id,
+      payloadJson,
+    );
+
+    this.logger.log(
+      `Prepared monopay widget data for order ${order.id} (requestId ${init.requestId})`,
+    );
+
+    return init;
+  }
+
+  /**
    * Handles a verified Monobank webhook payload by syncing the order's
    * payment status. Idempotent: replays of the same status are no-ops, and
    * out-of-order deliveries are discarded.
@@ -139,6 +165,14 @@ export class PaymentsService {
         `Webhook for unknown invoice ${payload.invoiceId} / order ${payload.reference}`,
       );
       return;
+    }
+
+    // A monopay invoice is created by the gateway, not by us, so the first
+    // webhook is where we learn its id — record it, otherwise the order could
+    // never be reconciled through the status endpoint afterwards.
+    if (!order.invoiceId && payload.invoiceId) {
+      order.invoiceId = payload.invoiceId;
+      await this.ordersRepo.save(order);
     }
 
     await this.applyRemoteStatus(order, payload);
@@ -264,6 +298,9 @@ export class PaymentsService {
     order: OrderEntity,
     remote: InvoiceStatusResponse,
   ): Promise<void> {
+    // The order is settled — its signed widget data must not be served again.
+    this.monoPayService.forget(order.id);
+
     const expected = this.toKopecks(Number(order.total));
     const paid = remote.finalAmount ?? remote.amount;
 
@@ -349,6 +386,66 @@ export class PaymentsService {
     }
 
     return null;
+  }
+
+  /**
+   * Loads an order that may still be paid online, or throws the reason why it
+   * may not. Shared by both payment flows so they cannot drift apart.
+   */
+  private async loadPayableOrder(
+    orderId: string,
+  ): Promise<{ order: OrderEntity; amount: number }> {
+    const order = await this.ordersRepo.findOne({
+      where: { id: orderId },
+      relations: ['items', 'items.product', 'user'],
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (order.paymentType !== PaymentType.Online) {
+      throw new BadRequestException(
+        'This order is not configured for online payment',
+      );
+    }
+
+    if (order.paymentStatus === PaymentStatus.Success) {
+      throw new BadRequestException('This order has already been paid');
+    }
+
+    const amount = this.toKopecks(Number(order.total));
+    if (amount <= 0) {
+      throw new BadRequestException('Order amount must be greater than zero');
+    }
+
+    return { order, amount };
+  }
+
+  /**
+   * The invoice body describing an order. The hosted-page flow posts it to
+   * the gateway itself; the monopay button carries it signed through the
+   * browser — either way the terms of the payment are decided here.
+   */
+  private buildInvoicePayload(
+    order: OrderEntity,
+    amount: number,
+    redirectUrl?: string,
+  ): CreateInvoiceRequest {
+    return {
+      amount,
+      ccy: MONOBANK_CCY_UAH,
+      merchantPaymInfo: {
+        reference: order.id,
+        destination: `Оплата замовлення №${order.number}`,
+        basketOrder: this.buildBasket(order),
+        discounts: this.buildDiscounts(order),
+        customerEmails: order.user?.email ? [order.user.email] : undefined,
+      },
+      redirectUrl: redirectUrl ?? this.defaultRedirectUrl(),
+      webHookUrl: this.webhookUrl(),
+      validity: this.invoiceValidity,
+    };
   }
 
   /** Builds the basket shown on the Monobank payment page. */
