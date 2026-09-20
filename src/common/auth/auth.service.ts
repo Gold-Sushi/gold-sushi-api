@@ -96,13 +96,6 @@ export class AuthService {
     return { message: PASSWORD_RESET_GENERIC_MESSAGE };
   }
 
-  /** Lets the frontend show "link expired" before rendering the form. */
-  async validateResetToken(token: string): Promise<{ valid: boolean }> {
-    const user = await this.findUserByResetToken(token);
-
-    return { valid: Boolean(user) };
-  }
-
   async resetPassword(
     token: string,
     password: string,

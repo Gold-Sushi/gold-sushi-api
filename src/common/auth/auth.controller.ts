@@ -10,7 +10,6 @@ import { Throttle } from '@nestjs/throttler';
 import { Authenticated } from '@common/decorators/auth.decorators';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
-import { ValidateResetTokenDto } from './dto/validate-reset-token.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { LocalAuthGuard } from './local-auth.guard';
@@ -63,22 +62,11 @@ export class AuthController {
     return this.authService.forgotPassword(dto.email);
   }
 
-  @Post('reset-password/validate')
-  @ApiOperation({
-    summary: 'Check whether a reset token is still usable',
-    description:
-      'Public endpoint. Lets the reset page report an expired or already-used link before asking for a new password.',
-  })
-  @Throttle({ default: { ttl: 60_000, limit: 10 } })
-  async validateResetToken(@Body() dto: ValidateResetTokenDto) {
-    return this.authService.validateResetToken(dto.token);
-  }
-
   @Post('reset-password')
   @ApiOperation({
     summary: 'Set a new password using a reset token',
     description:
-      'Public endpoint. Consumes the token from the reset email and stores the new password. The token cannot be reused afterwards.',
+      'Public endpoint. Validates the token from the reset email and, if it is still usable, stores the new password. Responds 400 with a plain-string message when the token is unknown, expired or already spent, and 400 with an array of messages when the new password fails validation. The token cannot be reused afterwards.',
   })
   @ApiBadRequestResponse({ description: 'Reset token is invalid or expired.' })
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
