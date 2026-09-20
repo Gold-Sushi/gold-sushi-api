@@ -1,24 +1,34 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MailerService as MailerMain } from '@nestjs-modules/mailer';
+import { Resend } from 'resend';
 import { UserEntity } from '@modules/users/entities/user.entity';
 import { OrderEntity } from '@modules/orders/entities/order.entity';
 import { DeliveryType } from '@common/enums/Order';
 import { IMailService } from './mailService.interface';
 import { BrandContext, buildBrandContext } from './mail.constants';
+import { renderTemplate } from './mail.renderer';
+import { RESEND_CLIENT } from './resend.provider';
 
 const CURRENCY = 'грн';
+
+/**
+ * Local part of the From address. The domain comes from SITE_DOMAIN and must
+ * be a domain verified in Resend, or every send is rejected.
+ */
+const FROM_LOCAL_PART = 'noreply';
 
 @Injectable()
 export class MailService implements IMailService {
   private readonly logger = new Logger(MailService.name);
   private readonly brand: BrandContext;
+  private readonly from: string;
 
   constructor(
-    private readonly mailerMain: MailerMain,
+    @Inject(RESEND_CLIENT) private readonly resend: Resend | null,
     private readonly configService: ConfigService,
   ) {
     this.brand = buildBrandContext((key) => this.configService.get<string>(key));
+    this.from = `${this.brand.name} <${FROM_LOCAL_PART}@${this.brand.siteDomain}>`;
   }
 
   async sendRegistrationEmail(
@@ -59,6 +69,24 @@ export class MailService implements IMailService {
     });
   }
 
+  async sendPasswordResetEmail(
+    user: Pick<UserEntity, 'email' | 'firstName'>,
+    resetUrl: string,
+    expiresInMinutes: number,
+  ): Promise<void> {
+    await this.send({
+      to: user.email,
+      subject: `Відновлення паролю — ${this.brand.name}`,
+      template: 'password-reset',
+      context: {
+        firstName: user.firstName,
+        preheader: `Посилання для зміни паролю дійсне ${expiresInMinutes} хв.`,
+        resetUrl,
+        expiresInMinutes,
+      },
+    });
+  }
+
   /** Shared sender — injects brand context and never throws to the caller. */
   private async send(options: {
     to: string;
@@ -66,20 +94,41 @@ export class MailService implements IMailService {
     template: string;
     context: Record<string, unknown>;
   }): Promise<void> {
+    if (!this.resend) {
+      this.logger.warn(
+        `RESEND_API_KEY is not set — skipping "${options.template}" to ${options.to}`,
+      );
+      return;
+    }
+
     try {
-      await this.mailerMain.sendMail({
+      // `subject` is part of the context too: layouts/base.pug renders it.
+      const html = renderTemplate(options.template, {
+        brand: this.brand,
+        subject: options.subject,
+        ...options.context,
+      });
+
+      const { data, error } = await this.resend.emails.send({
+        from: this.from,
         to: options.to,
         subject: options.subject,
-        template: options.template,
-        context: {
-          brand: this.brand,
-          subject: options.subject,
-          ...options.context,
-        },
+        html,
       });
-      this.logger.log(`Email "${options.template}" sent to ${options.to}`);
+
+      if (error) {
+        this.logger.error(
+          `Resend rejected "${options.template}" to ${options.to}: ${error.message}`,
+        );
+        return;
+      }
+
+      this.logger.log(
+        `Email "${options.template}" sent to ${options.to} (id=${data?.id})`,
+      );
     } catch (error) {
-      // Email delivery must not break the main business flow.
+      // Email delivery must not break the main business flow. Reached when the
+      // template fails to render or the request never completes.
       this.logger.error(
         `Failed to send "${options.template}" to ${options.to}`,
         error instanceof Error ? error.stack : String(error),

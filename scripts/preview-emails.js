@@ -19,8 +19,9 @@ const OUT_DIR = path.join(__dirname, '..', 'preview');
 // Mirrors the BrandContext built at runtime (mail.constants.ts).
 const brand = {
   name: 'Gold Sushi',
-  menuUrl: 'https://www.goldsushi.com/menu',
-  bannerUrl: 'https://placehold.co/600x240/ff714b/ffffff/png?text=Gold+Sushi',
+  siteDomain: 'goldsushi.store',
+  menuUrl: 'https://www.goldsushi.store/menu',
+  bannerUrl: 'https://res.cloudinary.com/dtttd03bp/image/upload/v1789925505/1_qaqgzv.png',
   supportPhone: '+38 (098) 408 61 90',
   supportEmail: 'goldsushi23@gmail.com',
   instagramUrl: 'https://www.instagram.com/goldsushidostavka/',
@@ -41,6 +42,13 @@ const fixtures = {
     subject: 'Ласкаво просимо до Gold Sushi',
     preheader: 'Ваш обліковий запис створено.',
     firstName: 'Іван',
+  },
+  'password-reset': {
+    subject: 'Відновлення паролю — Gold Sushi',
+    preheader: 'Посилання для зміни паролю дійсне 30 хв.',
+    firstName: 'Іван',
+    resetUrl: 'https://www.goldsushi.store/reset-password?token=3f1a9c7b2e4d6f80a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718',
+    expiresInMinutes: 30,
   },
   'order-confirmation': {
     subject: 'Замовлення №1024 підтверджено',

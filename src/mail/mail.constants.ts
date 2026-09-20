@@ -1,3 +1,5 @@
+import { resolveSiteDomain, siteUrl } from '@common/site.constants';
+
 /**
  * Central place for brand-related values that templates need.
  *
@@ -16,6 +18,8 @@ export interface SocialLink {
 
 export interface BrandContext {
   name: string;
+  /** Bare public domain (e.g. `goldsushi.store`) — drives the From address. */
+  siteDomain: string;
   /** Public site / menu URL used in the header banner link. */
   menuUrl: string;
   /** Absolute URL of the hero banner image shown in the header. */
@@ -33,11 +37,13 @@ export interface BrandContext {
   year: number;
 }
 
+/** Hero image at the top of every email. Served from Cloudinary. */
+const BANNER_URL = 'https://res.cloudinary.com/dtttd03bp/image/upload/v1789925505/1_qaqgzv.png';
+
 export const buildBrandContext = (
   get: (key: string) => string | undefined,
 ): BrandContext => {
-  const assetsBase =
-    get('MAIL_ASSETS_URL')?.replace(/\/$/, '') ?? 'https://www.goldsushi.com';
+  const siteDomain = resolveSiteDomain(get);
 
   // White, square PNG icons — look crisp on the dark footer and render in
   // every client (including Outlook, which ignores SVG). Override the base via
@@ -52,8 +58,9 @@ export const buildBrandContext = (
 
   return {
     name: get('MAIL_BRAND_NAME') ?? 'Gold Sushi',
-    menuUrl: get('MAIL_MENU_URL') ?? 'https://www.goldsushi.com/menu',
-    bannerUrl: get('MAIL_BANNER_URL') ?? `${assetsBase}/emailTemplates/img/banner.png`,
+    siteDomain,
+    menuUrl: get('MAIL_MENU_URL') ?? `${siteUrl(siteDomain)}/menu`,
+    bannerUrl: BANNER_URL,
     supportPhone: get('MAIL_SUPPORT_PHONE') ?? '+38 (098) 408 61 90',
     supportEmail: get('MAIL_SUPPORT_EMAIL') ?? 'goldsushi23@gmail.com',
     instagramUrl,

@@ -65,6 +65,16 @@ export class UserEntity {
   @Column({ type: 'varchar', nullable: true })
   refreshToken: string;
 
+  // SHA-256 digest of the password reset token — the raw token only ever
+  // exists in the email we send, so a DB leak cannot be replayed.
+  @Exclude()
+  @Column({ type: 'varchar', nullable: true, name: 'password_reset_token_hash' })
+  passwordResetTokenHash: string | null;
+
+  @Exclude()
+  @Column({ type: 'timestamptz', nullable: true, name: 'password_reset_expires_at' })
+  passwordResetExpiresAt: Date | null;
+
   @OneToMany(() => OrderEntity, (order) => order.user)
   orders: OrderEntity[];
 
