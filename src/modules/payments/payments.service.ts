@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OrderEntity } from '@modules/orders/entities/order.entity';
+import { AdminOrdersGateway } from '@modules/notifications/admin-orders.gateway';
 import {
   canTransitionOrderStatus,
   OrderStatus,
@@ -61,6 +62,7 @@ export class PaymentsService {
     private readonly monobankService: MonobankService,
     private readonly monoPayService: MonoPayService,
     private readonly configService: ConfigService,
+    private readonly adminOrdersGateway: AdminOrdersGateway,
   ) {
     this.invoiceValidity = Number(
       this.configService.get<string>('MONOBANK_INVOICE_VALIDITY') ?? 3600,
@@ -283,6 +285,26 @@ export class PaymentsService {
 
     if (nextStatus === PaymentStatus.Success) {
       await this.onPaymentSucceeded(order, remote);
+      await this.notifyAdminsOrderPaid(order.id);
+    }
+  }
+
+  /**
+   * Pushes the paid order to connected admins. The webhook path loads the
+   * order without relations, so it is reloaded for the customer/items info.
+   * Never throws — a notification must not fail webhook handling.
+   */
+  private async notifyAdminsOrderPaid(orderId: string): Promise<void> {
+    try {
+      const fullOrder = await this.ordersRepo.findOne({
+        where: { id: orderId },
+        relations: ['items', 'user'],
+      });
+      if (fullOrder) {
+        this.adminOrdersGateway.notifyOrderPaid(fullOrder);
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to notify admins about paid order ${orderId}: ${error}`);
     }
   }
 

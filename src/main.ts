@@ -7,7 +7,8 @@ import {
 } from '@nestjs/swagger';
 import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
-import { resolveSiteDomain } from '@common/site.constants';
+import { resolveCorsOrigins } from '@common/site.constants';
+import { SocketIoAdapter } from '@common/ws/socket-io.adapter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -16,18 +17,14 @@ async function bootstrap() {
     rawBody: true,
   });
 
-  const siteDomain = resolveSiteDomain((key) => process.env[key]);
-
   app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      process.env.FRONTEND_URL,
-      `https://${siteDomain}`,
-      `https://www.${siteDomain}`,
-    ].filter(Boolean),
+    origin: resolveCorsOrigins((key) => process.env[key]),
     methods: 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
     allowedHeaders: 'Content-Type, Authorization',
   });
+
+  // Live admin notifications (Socket.IO) share the HTTP CORS allow-list.
+  app.useWebSocketAdapter(new SocketIoAdapter(app));
 
   app.use(cookieParser());
   app.useGlobalPipes(new ValidationPipe({

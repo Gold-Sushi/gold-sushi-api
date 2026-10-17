@@ -26,6 +26,7 @@ import {
   OrderStatus,
 } from '@common/enums/Order';
 import { MailService } from '../../mail/mail.service';
+import { AdminOrdersGateway } from '@modules/notifications/admin-orders.gateway';
 
 @Injectable()
 export class OrdersService {
@@ -35,6 +36,7 @@ export class OrdersService {
     @InjectRepository(UserEntity) private readonly usersRepo: Repository<UserEntity>,
     @InjectRepository(Promocode) private readonly promoCodeRepo: Repository<Promocode>,
     private readonly mailService: MailService,
+    private readonly adminOrdersGateway: AdminOrdersGateway,
   ) {}
 
   /**
@@ -267,11 +269,13 @@ export class OrdersService {
 
     const savedOrder = await this.ordersRepo.save(newOrder);
 
-    // Reload with relations so the email has product titles + recipient info,
-    // then fire-and-forget (never blocks/breaks order creation).
+    // Reload with relations so the email and the admin live notification have
+    // product titles + recipient info, then fire-and-forget (never
+    // blocks/breaks order creation).
     void this.getOrder(savedOrder.id)
       .then((fullOrder) => {
         if (fullOrder) {
+          this.adminOrdersGateway.notifyNewOrder(fullOrder);
           return this.mailService.sendOrderConfirmationEmail(fullOrder);
         }
       })

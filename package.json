@@ -20,7 +20,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "mail:preview": "node scripts/preview-emails.js --open",
     "pay:test": "node --env-file-if-exists=.env scripts/test-monobank-payment.js",
-    "monopay:keys": "node --env-file-if-exists=.env scripts/generate-monopay-keys.js"
+    "monopay:keys": "node --env-file-if-exists=.env scripts/generate-monopay-keys.js",
+    "orders:listen": "node --env-file-if-exists=.env scripts/listen-admin-orders.js"
   },
   "engines": {
     "node": ">=20"
@@ -32,9 +33,11 @@
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.0",
+    "@nestjs/platform-socket.io": "^11.2.7",
     "@nestjs/swagger": "^11.0.0",
     "@nestjs/throttler": "^6.5.0",
     "@nestjs/typeorm": "^11.0.0",
+    "@nestjs/websockets": "^11.2.7",
     "axios": "^1.13.5",
     "bcrypt": "^5.1.1",
     "class-transformer": "^0.5.1",
@@ -54,6 +57,7 @@
     "resend": "^6.28.1",
     "rxjs": "^7.8.1",
     "sharp": "^0.33.5",
+    "socket.io": "^4.8.4",
     "tsconfig-paths": "^4.2.0",
     "typeorm": "^0.3.20"
   },
@@ -79,6 +83,7 @@
     "eslint-plugin-prettier": "^5.0.0",
     "jest": "^29.5.0",
     "prettier": "^3.0.0",
+    "socket.io-client": "^4.8.4",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
     "ts-jest": "^29.1.0",
@@ -101,7 +106,12 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^#types/(.*)$": "<rootDir>/types/$1",
+      "^@common/(.*)$": "<rootDir>/common/$1",
+      "^@modules/(.*)$": "<rootDir>/modules/$1"
+    }
   },
   "pnpm": {
     "onlyBuiltDependencies": [

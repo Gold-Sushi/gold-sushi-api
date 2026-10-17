@@ -24,3 +24,19 @@ export const resolveSiteDomain = (
 
 /** Canonical public origin, e.g. `https://www.goldsushi.store`. */
 export const siteUrl = (domain: string): string => `https://www.${domain}`;
+
+/**
+ * Origins allowed to call the API from a browser — shared by the HTTP CORS
+ * config and the Socket.IO server so the two can never drift apart.
+ */
+export const resolveCorsOrigins = (
+  get: (key: string) => string | undefined,
+): string[] => {
+  const siteDomain = resolveSiteDomain(get);
+  return [
+    'http://localhost:3000',
+    get('FRONTEND_URL'),
+    `https://${siteDomain}`,
+    `https://www.${siteDomain}`,
+  ].filter(Boolean);
+};
