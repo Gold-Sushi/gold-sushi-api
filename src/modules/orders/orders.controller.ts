@@ -27,8 +27,6 @@ export class OrdersController {
   @OptionalAuth()
   @ApiOperation({
     summary: 'Create an order',
-    description:
-      'Authentication is optional. A Bearer JWT links the order to the account; without a token the order is created as a guest order.',
   })
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
   createOrder(@Req() req, @Body() createOrderDto: CreateOrderDTO) {
@@ -38,8 +36,6 @@ export class OrdersController {
   @Post('promo-code/apply')
   @ApiOperation({
     summary: 'Validate / preview a promo code',
-    description:
-      'Public endpoint. Checks that a promo code exists and is not expired and returns the discount it would grant for the provided subtotal.',
   })
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   applyPromoCode(@Body() dto: ApplyPromoCodeDTO) {
@@ -50,8 +46,6 @@ export class OrdersController {
   @AdminOnly()
   @ApiOperation({
     summary: 'List all orders',
-    description:
-      'Requires a Bearer JWT with the ADMIN role. Supports filtering (status, payment, delivery, user, courier, promo code, total/date ranges, search), sorting and pagination.',
   })
   getAllOrders(@Query() filter: FilterOrdersDTO) {
     return this.ordersService.getAllOrders(filter);
@@ -59,7 +53,7 @@ export class OrdersController {
 
   @Patch(':id/status')
   @AdminOnly()
-  @ApiOperation({ summary: 'Update an order status', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiOperation({ summary: 'Update an order status' })
   updateOrderStatus(
     @Param('id') id: string,
     @Body() updateOrderStatusDto: UpdateOrderStatusDTO,
@@ -71,8 +65,6 @@ export class OrdersController {
   @AdminOnly()
   @ApiOperation({
     summary: 'Assign a courier to an order',
-    description:
-      'Requires a Bearer JWT with the ADMIN role. The target user must have the COURIER role and the order must be a courier-delivery order that is not yet delivered/cancelled.',
   })
   assignCourier(
     @Param('id') id: string,
@@ -85,8 +77,6 @@ export class OrdersController {
   @CourierOnly()
   @ApiOperation({
     summary: 'List orders assigned to the current courier',
-    description:
-      'Requires a Bearer JWT with the COURIER role. Optionally filter by status.',
   })
   getCourierOrders(@Req() req, @Query('status') status?: OrderStatus) {
     return this.ordersService.getCourierOrders(req.user.id, status);
@@ -96,8 +86,6 @@ export class OrdersController {
   @CourierOnly(CourierAssignedGuard)
   @ApiOperation({
     summary: 'Get an assigned order with delivery details',
-    description:
-      'Requires a Bearer JWT with the COURIER role. Returns customer contact and address details for an order assigned to the courier.',
   })
   @ApiForbiddenResponse({ description: 'Order is not assigned to this courier.' })
   @ApiNotFoundResponse({ description: 'Order not found.' })
@@ -109,8 +97,6 @@ export class OrdersController {
   @CourierOnly(CourierAssignedGuard)
   @ApiOperation({
     summary: 'Mark an assigned order as delivered',
-    description:
-      'Requires a Bearer JWT with the COURIER role. Only the assigned courier can mark their order as Delivered (from OutForDelivery).',
   })
   @ApiForbiddenResponse({ description: 'Order is not assigned to this courier.' })
   @ApiNotFoundResponse({ description: 'Order not found.' })
@@ -120,7 +106,7 @@ export class OrdersController {
 
   @Patch(':id')
   @AdminOnly()
-  @ApiOperation({ summary: 'Update an order', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiOperation({ summary: 'Update an order' })
   updateOrder(
     @Param('id') id: string,
     @Body() updateOrderDto: UpdateOrderDTO,
@@ -130,7 +116,7 @@ export class OrdersController {
 
   @Delete(':id')
   @AdminOnly()
-  @ApiOperation({ summary: 'Delete an order', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiOperation({ summary: 'Delete an order' })
   deleteOrder(@Param('id') id: string) {
     return this.ordersService.deleteOrder(id);
   }
@@ -139,8 +125,6 @@ export class OrdersController {
   @OptionalAuth(OrderOwnerGuard)
   @ApiOperation({
     summary: 'Get an order by id',
-    description:
-      'Authentication is optional. Guest orders are accessible by their (unguessable) id; registered-user orders require the owner Bearer JWT or an ADMIN token.',
   })
   @ApiForbiddenResponse({ description: 'Order belongs to another registered user.' })
   @ApiNotFoundResponse({ description: 'Order not found.' })

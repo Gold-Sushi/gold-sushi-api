@@ -25,8 +25,6 @@ export class AuthController {
   @Post('login')
   @ApiOperation({
     summary: 'Log in with email and password',
-    description:
-      'Public endpoint. Validates the provided credentials and returns a JWT access token used as a Bearer token on protected endpoints.',
   })
   @ApiUnauthorizedResponse({ description: 'Invalid email or password.' })
   async login(@Body() body: LoginDto, @Req() req) {
@@ -36,7 +34,6 @@ export class AuthController {
   @Post('logout')
   @ApiOperation({
     summary: 'Log out the current session',
-    description: 'Public endpoint. Clears the authentication/refresh state for the current session.',
   })
   async logout() {
     return 'logout success';
@@ -45,7 +42,6 @@ export class AuthController {
   @Post('refresh')
   @ApiOperation({
     summary: 'Refresh the access token',
-    description: 'Public endpoint. Issues a new access token from a valid refresh token.',
   })
   async refreshToken() {
     return 'token refresh success';
@@ -54,8 +50,6 @@ export class AuthController {
   @Post('forgot-password')
   @ApiOperation({
     summary: 'Request a password reset link',
-    description:
-      'Public endpoint. Emails a single-use reset link valid for 30 minutes. Always returns the same message whether or not the address belongs to an account, so it cannot be used to discover registered emails.',
   })
   @Throttle({ default: { ttl: 60_000, limit: 3 } })
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
@@ -65,8 +59,6 @@ export class AuthController {
   @Post('reset-password')
   @ApiOperation({
     summary: 'Set a new password using a reset token',
-    description:
-      'Public endpoint. Validates the token from the reset email and, if it is still usable, stores the new password. Responds 400 with a plain-string message when the token is unknown, expired or already spent, and 400 with an array of messages when the new password fails validation. The token cannot be reused afterwards.',
   })
   @ApiBadRequestResponse({ description: 'Reset token is invalid or expired.' })
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
@@ -78,8 +70,6 @@ export class AuthController {
   @Authenticated()
   @ApiOperation({
     summary: 'Change the password of the current user',
-    description:
-      'Requires a Bearer JWT and the current password, so a stolen access token alone cannot take over the account.',
   })
   @ApiBadRequestResponse({
     description: 'New password matches the current one.',

@@ -28,7 +28,7 @@ export class ProductsController {
   @Post('create')
   @AdminOnly()
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Create a product', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiOperation({ summary: 'Create a product' })
   @UseInterceptors(FileInterceptor('image'))
   async create(
     @Body() body: CreateProductDto,
@@ -40,7 +40,7 @@ export class ProductsController {
   @Patch(':id')
   @AdminOnly()
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Update a product', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiOperation({ summary: 'Update a product' })
   @UseInterceptors(FileInterceptor('image'))
   async updateItem(
     @Param('id') id: string,
@@ -52,25 +52,25 @@ export class ProductsController {
 
   @Delete(':id')
   @AdminOnly()
-  @ApiOperation({ summary: 'Delete a product', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiOperation({ summary: 'Delete a product' })
   async deleteItem(@Param('id') id: string) {
     return this.productsService.delete(id);
   }
 
   @Get()
-  @ApiOperation({ summary: 'List all products', description: 'Public endpoint.' })
+  @ApiOperation({ summary: 'List all products' })
   async getAllItems(): Promise<ProductResponseDto[]> {
     return this.productsService.getAll();
   }
 
   @Get('unassigned')
-  @ApiOperation({ summary: 'List products not assigned to a category', description: 'Public endpoint.' })
+  @ApiOperation({ summary: 'List products not assigned to a category' })
   async getAllUnassignedItems(): Promise<ProductResponseDto[]> {
     return this.productsService.getAllUnassigned();
   }
 
   @Get('statuses')
-  @ApiOperation({ summary: 'List available product statuses', description: 'Public endpoint.' })
+  @ApiOperation({ summary: 'List available product statuses' })
   async getStatuses(): Promise<any> {
     return [
       { value: ProductStatus.ACTIVE, label: 'Active' },
@@ -80,13 +80,13 @@ export class ProductsController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get a product by id', description: 'Public endpoint.' })
+  @ApiOperation({ summary: 'Get a product by id' })
   async getItemById(@Param('id') id: string): Promise<ProductResponseDto> {
     return this.productsService.getById(id);
   }
 
   @Get(':id/recommendations')
-  @ApiOperation({ summary: 'Get recommended products for a product', description: 'Public endpoint.' })
+  @ApiOperation({ summary: 'Get recommended products for a product' })
   async getRecommendations(
     @Param('id') id: string,
     @Query('limit') limit?: string

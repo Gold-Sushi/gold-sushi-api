@@ -38,8 +38,6 @@ export class PaymentsController {
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Start a Monobank payment for an order',
-    description:
-      'Authentication is optional. Guest orders are accessible by id; registered-user orders require the owner Bearer JWT or an ADMIN token.',
   })
   @ApiForbiddenResponse({ description: 'Order belongs to another registered user.' })
   @ApiNotFoundResponse({ description: 'Order not found.' })
@@ -60,8 +58,6 @@ export class PaymentsController {
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Get the payment status of an order',
-    description:
-      'Authentication is optional. Guest orders are accessible by id; registered-user orders require the owner Bearer JWT or an ADMIN token.',
   })
   @ApiForbiddenResponse({ description: 'Order belongs to another registered user.' })
   @ApiNotFoundResponse({ description: 'Order not found.' })

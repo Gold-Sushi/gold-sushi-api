@@ -15,8 +15,6 @@ export class StatisticsController {
   @Get('summary')
   @ApiOperation({
     summary: 'Order KPIs for a period',
-    description:
-      'Totals, revenue, average order value, discounts, cancellation rate and payment/delivery/status breakdowns. Requires a Bearer JWT with the ADMIN role.',
   })
   getSummary(@Query() query: StatisticsQueryDTO) {
     return this.statisticsService.getSummary(query);
@@ -25,8 +23,6 @@ export class StatisticsController {
   @Get('monthly')
   @ApiOperation({
     summary: 'Monthly orders & revenue',
-    description:
-      'Earned orders and revenue grouped by calendar month. Every month in the range is returned, zero-filled when there were no orders. Defaults to the current year when no date range is provided (`endDate` defaults to now, `startDate` to January 1st of that year). Requires the ADMIN role.',
   })
   getMonthly(@Query() query: StatisticsQueryDTO) {
     return this.statisticsService.getMonthly(query);
@@ -35,7 +31,6 @@ export class StatisticsController {
   @Get('by-weekday')
   @ApiOperation({
     summary: 'Orders & revenue per weekday',
-    description: 'Earned orders and revenue grouped by day of week (Monday → Sunday). Requires the ADMIN role.',
   })
   getByWeekday(@Query() query: StatisticsQueryDTO) {
     return this.statisticsService.getByWeekday(query);
@@ -44,7 +39,6 @@ export class StatisticsController {
   @Get('by-hour')
   @ApiOperation({
     summary: 'Peak-hours heatmap',
-    description: 'Earned order counts grouped by hour of day (0–23). Requires the ADMIN role.',
   })
   getByHour(@Query() query: StatisticsQueryDTO) {
     return this.statisticsService.getByHour(query);
@@ -53,7 +47,6 @@ export class StatisticsController {
   @Get('top-products')
   @ApiOperation({
     summary: 'Best-selling products',
-    description: 'Products ranked by units sold across earned orders in the period. Requires the ADMIN role.',
   })
   getTopProducts(@Query() query: TopProductsQueryDTO) {
     return this.statisticsService.getTopProducts(query);

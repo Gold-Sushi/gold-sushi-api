@@ -30,9 +30,6 @@ export class MonoPayController {
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Get signed data for the monopay button of an order',
-    description:
-      'Authentication is optional. Guest orders are accessible by id; registered-user orders require the owner Bearer JWT or an ADMIN token. ' +
-      'Calling this again for an unchanged order returns the same data until the requestId expires — the widget must not be re-initialised with different data.',
   })
   @ApiOkResponse({
     description: 'Data to initialise the monopay widget with.',

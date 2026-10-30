@@ -31,7 +31,7 @@ class PromotionsController {
   @Post()
   @AdminOnly()
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Create a promotion', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiOperation({ summary: 'Create a promotion' })
   @UseInterceptors(FileInterceptor('image'))
   async createPromotion(@UploadedFile() image: Express.Multer.File, @Body() dto: CreatePromotionDto) {
     let imageUrl
@@ -44,20 +44,20 @@ class PromotionsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List all promotions', description: 'Public endpoint.' })
+  @ApiOperation({ summary: 'List all promotions' })
   async getAllPromotions() {
     return this.promotionsService.getAllPromotions();
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get a promotion by id', description: 'Public endpoint.' })
+  @ApiOperation({ summary: 'Get a promotion by id' })
   async getPromotionById(@Param('id') id: string) {
     return this.promotionsService.getPromotionById(id);
   }
 
   @Delete(':id')
   @AdminOnly()
-  @ApiOperation({ summary: 'Delete a promotion', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiOperation({ summary: 'Delete a promotion' })
   async deletePromotion(@Param('id') id: string) {
     return this.promotionsService.deletePromotion(id);
   }
@@ -65,7 +65,7 @@ class PromotionsController {
   @Patch(':id')
   @AdminOnly()
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Update a promotion', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiOperation({ summary: 'Update a promotion' })
   @UseInterceptors(FileInterceptor('image'))
   async updatePromotion(
     @Param('id') id: string,
@@ -79,7 +79,6 @@ class PromotionsController {
   @AdminOnly()
   @ApiOperation({
     summary: 'Attach products to a promotion',
-    description: 'Adds the given products to the promotion. Requires a Bearer JWT with the ADMIN role.',
   })
   async addProductsToPromotion(
     @Param('id') id: string,
@@ -92,7 +91,6 @@ class PromotionsController {
   @AdminOnly()
   @ApiOperation({
     summary: 'Detach products from a promotion',
-    description: 'Removes the given products from the promotion. Requires a Bearer JWT with the ADMIN role.',
   })
   async removeProductsFromPromotion(
     @Param('id') id: string,
@@ -103,26 +101,26 @@ class PromotionsController {
 
   @Post('code')
   @AdminOnly()
-  @ApiOperation({ summary: 'Create a promo code', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiOperation({ summary: 'Create a promo code' })
   async createPromoCode(@Body() dto: CreatePromoCodeDto) {
     return this.promotionsService.createPromoCode(dto);
   }
 
   @Get('code/all')
-  @ApiOperation({ summary: 'List all promo codes', description: 'Public endpoint.' })
+  @ApiOperation({ summary: 'List all promo codes' })
   async getAllPromoCodes() {
     return this.promotionsService.getAllPromoCodes();
   }
 
   @Get('code/:id')
-  @ApiOperation({ summary: 'Get a promo code by id', description: 'Public endpoint.' })
+  @ApiOperation({ summary: 'Get a promo code by id' })
   async getPromoCode(@Param('id') id: string) {
     return this.promotionsService.getPromoCode(id);
   }
 
   @Patch('code/:id')
   @AdminOnly()
-  @ApiOperation({ summary: 'Update a promo code', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiOperation({ summary: 'Update a promo code' })
   async updatePromoCode(
     @Param('id') id: string,
     @Body() dto: UpdatePromocodeDto
@@ -132,7 +130,7 @@ class PromotionsController {
 
   @Delete('code/:id')
   @AdminOnly()
-  @ApiOperation({ summary: 'Delete a promo code', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiOperation({ summary: 'Delete a promo code' })
   async deletePromoCode(@Param('id') id: string) {
     return this.promotionsService.deletePromoCode(id);
   }

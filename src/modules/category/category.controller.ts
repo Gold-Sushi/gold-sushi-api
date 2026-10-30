@@ -23,14 +23,14 @@ export class CategoryController {
   constructor(private readonly categoryService: CategoryService) {}
 
   @Get('menu')
-  @ApiOperation({ summary: 'Get the full menu', description: 'Public endpoint.' })
+  @ApiOperation({ summary: 'Get the full menu' })
   getMenu() {
     return this.categoryService.getMenu();
   }
 
   @Post('category')
   @AdminOnly()
-  @ApiOperation({ summary: 'Create a category', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiOperation({ summary: 'Create a category' })
   async create(@Body() createCategoryDto: CreateCategoryDto) {
     const category = await this.categoryService.create(createCategoryDto);
 
@@ -41,13 +41,13 @@ export class CategoryController {
   }
 
   @Get('category/list')
-  @ApiOperation({ summary: 'List all categories', description: 'Public endpoint.' })
+  @ApiOperation({ summary: 'List all categories' })
   findAll(): Promise<CategoryResponseDto[]> {
     return this.categoryService.findAll() as any;
   }
 
   @Get('category/:id')
-  @ApiOperation({ summary: 'Get a category by id', description: 'Public endpoint.' })
+  @ApiOperation({ summary: 'Get a category by id' })
   findOne(@Param('id') id: string) {
     return this.categoryService.findOne(id);
   }
@@ -55,7 +55,7 @@ export class CategoryController {
   @Post('category/:id/thumbnail')
   @AdminOnly()
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Upload a category thumbnail', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiOperation({ summary: 'Upload a category thumbnail' })
   @UseInterceptors(FileInterceptor('image'))
   addThumbnail(@Param('id') id: string, @UploadedFile() file: Express.Multer.File,) {
     return this.categoryService.addThumbnail(id, file);
@@ -63,14 +63,14 @@ export class CategoryController {
 
   @Patch('category/:id')
   @AdminOnly()
-  @ApiOperation({ summary: 'Update a category', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiOperation({ summary: 'Update a category' })
   update(@Param('id') id: string, @Body() updateCategoryDto: UpdateCategoryDto) {
     return this.categoryService.update(id, updateCategoryDto);
   }
 
   @Delete('category/:id')
   @AdminOnly()
-  @ApiOperation({ summary: 'Delete a category', description: 'Requires a Bearer JWT with the ADMIN role.' })
+  @ApiOperation({ summary: 'Delete a category' })
   remove(@Param('id') id: string) {
     return this.categoryService.remove(id);
   }
