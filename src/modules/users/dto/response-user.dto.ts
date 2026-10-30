@@ -22,4 +22,7 @@ export class ResponseUserDto {
 
   @Expose()
   role: string;
+
+  @Expose()
+  createdAt: Date;
 }

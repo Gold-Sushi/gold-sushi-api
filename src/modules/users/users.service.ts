@@ -5,14 +5,16 @@ import { CreateCourierDto } from './dto/create-courier.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserEntity } from './entities/user.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { plainToInstance } from 'class-transformer';
 import { ResponseUserDto } from './dto/response-user.dto';
+import { SearchUsersDto } from './dto/search-users.dto';
 import { OrderEntity } from '@modules/orders/entities/order.entity';
 import { OrderStatus } from '@common/enums/Order';
 import { UserRole } from '@common/enums/UserRole';
 import { ProductEntity } from '@modules/products/entities/product.entity';
 import { MailService } from '../../mail/mail.service';
+import { normalizePhone } from '../../utils/phone/normalize-phone';
 
 @Injectable()
 export class UsersService {
@@ -31,8 +33,11 @@ export class UsersService {
       throw new BadRequestException('email already exists');
     }
 
+    const phone = normalizePhone(user.phone);
+    await this.assertPhoneAvailable(phone);
+
     const hashedPassword = await this.bcryptService.hashPassword(user.password, 10);
-    const newUser = new UserEntity({ ...user, password: hashedPassword });
+    const newUser = new UserEntity({ ...user, phone, password: hashedPassword });
 
     try {
       await this.userRepository.save(newUser);
@@ -50,8 +55,47 @@ export class UsersService {
   }
 
   async findAll(): Promise<ResponseUserDto[]> {
-    const users = await this.userRepository.find();
+    const users = await this.userRepository.find({ order: { createdAt: 'DESC' } });
     return plainToInstance(ResponseUserDto, users);
+  }
+
+  /**
+   * Admin user search by first name, last name, email or phone.
+   *
+   * The query is split into words and every word must match at least one of
+   * those fields, so "Ivan Petrenko" finds a user by first + last name.
+   * Words containing digits are also matched against the phone with
+   * formatting stripped, so "067 123 45" finds "+380671234567".
+   */
+  async search({ q, limit = 20 }: SearchUsersDto): Promise<ResponseUserDto[]> {
+    const qb = this.userRepository
+      .createQueryBuilder('user')
+      .orderBy('user.createdAt', 'DESC')
+      .take(limit);
+
+    q.split(/\s+/)
+      .filter(Boolean)
+      .forEach((word, i) => {
+        const like = `%${word.replace(/[\\%_]/g, '\\$&')}%`;
+        const digits = word.replace(/\D/g, '');
+
+        qb.andWhere(
+          new Brackets((sub) => {
+            sub
+              .where(`user.firstName ILIKE :like${i}`)
+              .orWhere(`user.lastName ILIKE :like${i}`)
+              .orWhere(`user.email ILIKE :like${i}`)
+              .orWhere(`user.phone ILIKE :like${i}`);
+
+            if (digits) {
+              sub.orWhere(`regexp_replace(user.phone, '\\D', '', 'g') LIKE :digits${i}`);
+            }
+          }),
+          { [`like${i}`]: like, [`digits${i}`]: `%${digits}%` },
+        );
+      });
+
+    return plainToInstance(ResponseUserDto, await qb.getMany());
   }
 
   /**
@@ -69,6 +113,9 @@ export class UsersService {
       throw new BadRequestException('email already exists');
     }
 
+    const phone = normalizePhone(courier.phone);
+    await this.assertPhoneAvailable(phone);
+
     const hashedPassword = await this.bcryptService.hashPassword(
       courier.password,
       10,
@@ -76,6 +123,7 @@ export class UsersService {
 
     const newCourier = new UserEntity({
       ...courier,
+      phone,
       password: hashedPassword,
       role: UserRole.Courier,
       smsVerified: true,
@@ -109,6 +157,18 @@ export class UsersService {
   async findOneByEmail(email: string): Promise<ResponseUserDto> {
     const user = await this.userRepository.findOne({ where: { email } });
     return plainToInstance(ResponseUserDto, user);
+  }
+
+  /**
+   * Throws if the phone is already used by another account.
+   * Pass `exceptUserId` when updating so a user can keep their own phone.
+   */
+  private async assertPhoneAvailable(phone: string, exceptUserId?: string): Promise<void> {
+    const existing = await this.userRepository.findOne({ where: { phone } });
+
+    if (existing && existing.id !== exceptUserId) {
+      throw new BadRequestException('phone already exists');
+    }
   }
 
   // Favourites related methods
@@ -175,6 +235,14 @@ export class UsersService {
     }
 
     const { email, dateOfBirth, ...allowedUpdates } = updateUserDto;
+
+    if (allowedUpdates.phone) {
+      allowedUpdates.phone = normalizePhone(allowedUpdates.phone);
+
+      if (allowedUpdates.phone !== user.phone) {
+        await this.assertPhoneAvailable(allowedUpdates.phone, id);
+      }
+    }
 
     if (dateOfBirth && !user.dateOfBirth) {
       Object.assign(user, { dateOfBirth, ...allowedUpdates });

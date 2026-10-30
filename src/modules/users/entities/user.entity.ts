@@ -2,6 +2,7 @@ import { OrderEntity } from '@modules/orders/entities/order.entity';
 import {
   BeforeInsert,
   Column,
+  CreateDateColumn,
   Entity,
   JoinTable,
   ManyToMany,
@@ -31,7 +32,7 @@ export class UserEntity {
   @Column({ type: 'varchar', nullable: true })
   password: string | null;
 
-  @Column({ type: 'varchar' })
+  @Column({ type: 'varchar', unique: true })
   @IsPhoneNumber()
   phone: string;
 
@@ -74,6 +75,9 @@ export class UserEntity {
   @Exclude()
   @Column({ type: 'timestamptz', nullable: true, name: 'password_reset_expires_at' })
   passwordResetExpiresAt: Date | null;
+
+  @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
+  createdAt: Date;
 
   @OneToMany(() => OrderEntity, (order) => order.user)
   orders: OrderEntity[];

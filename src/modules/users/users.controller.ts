@@ -7,6 +7,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AdminOnly, Authenticated } from '@common/decorators/auth.decorators';
 import { ResponseUserDto } from './dto/response-user.dto';
+import { SearchUsersDto } from './dto/search-users.dto';
 import { OrderStatus } from '@common/enums/Order';
 
 @ApiTags('users')
@@ -46,6 +47,16 @@ export class UsersController {
     return this.usersService.getCouriers();
   }
 
+  @AdminOnly()
+  @Get('search')
+  @ApiOperation({
+    summary: 'Search users',
+    description: 'Requires a Bearer JWT with the ADMIN role. Matches first name, last name, email or phone; phone matching ignores formatting.',
+  })
+  search(@Query() query: SearchUsersDto): Promise<ResponseUserDto[]> {
+    return this.usersService.search(query);
+  }
+
   @Patch(':id')
   @ApiOperation({ summary: 'Update a user', description: 'Public endpoint.' })
   update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto): Promise<string> {
@@ -65,8 +76,9 @@ export class UsersController {
     return this.usersService.findOne(id);
   }
 
+  @AdminOnly()
   @Get()
-  @ApiOperation({ summary: 'List all users', description: 'Public endpoint.' })
+  @ApiOperation({ summary: 'List all users', description: 'Requires a Bearer JWT with the ADMIN role.' })
   findAll(): Promise<ResponseUserDto[]> {
     return this.usersService.findAll();
   }
