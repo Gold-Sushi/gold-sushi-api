@@ -1,6 +1,7 @@
 import { JwtService } from '@nestjs/jwt';
 import { Socket } from 'socket.io';
 import { UserRole } from '@common/enums/UserRole';
+import { SessionService } from '@common/auth/session.service';
 import { DeliveryType, PaymentStatus, PaymentType } from '@common/enums/Order';
 import { OrderEntity } from '@modules/orders/entities/order.entity';
 import {
@@ -31,8 +32,14 @@ function mockSocket(handshake: Partial<Socket['handshake']> = {}) {
   };
 }
 
-function build() {
-  const gateway = new AdminOrdersGateway(jwtService);
+function build(resolveSession?: jest.Mock) {
+  // Default: the session is live and the role in the database matches the token.
+  const sessionService = {
+    resolveSession:
+      resolveSession ??
+      jest.fn(async ({ id, email, role }) => ({ id, email, role })),
+  } as unknown as SessionService;
+  const gateway = new AdminOrdersGateway(jwtService, sessionService);
   const emit = jest.fn();
   const to = jest.fn().mockReturnValue({ emit });
   gateway.server = { to } as any;
@@ -42,47 +49,66 @@ function build() {
 describe('AdminOrdersGateway', () => {
   afterEach(() => jest.useRealTimers());
 
-  it('refuses a handshake without a token', () => {
+  it('refuses a handshake without a token', async () => {
     const { gateway } = build();
-    expect(gateway.authenticate(mockSocket())).toBe('Unauthorized');
+    expect(await gateway.authenticate(mockSocket())).toBe('Unauthorized');
   });
 
-  it('refuses a token signed with another secret', () => {
+  it('refuses a token signed with another secret', async () => {
     const { gateway } = build();
     const forged = new JwtService({ secret: 'other' }).sign({ role: UserRole.Admin });
-    expect(gateway.authenticate(mockSocket({ auth: { token: forged } }))).toBe('Unauthorized');
+    expect(await gateway.authenticate(mockSocket({ auth: { token: forged } }))).toBe('Unauthorized');
   });
 
   it.each([UserRole.User, UserRole.Courier, UserRole.Guest])(
     'refuses a %s token',
-    (role) => {
+    async (role) => {
       const { gateway } = build();
       const client = mockSocket({ auth: { token: tokenFor(role) } });
 
-      expect(gateway.authenticate(client)).toBe('Forbidden');
+      expect(await gateway.authenticate(client)).toBe('Forbidden');
       expect(client.data.user).toBeUndefined();
     },
   );
 
-  it('wires authentication into the namespace middleware', () => {
+  it('refuses an admin token whose session was revoked or blocked', async () => {
+    const { gateway } = build(jest.fn().mockResolvedValue(null));
+    const client = mockSocket({ auth: { token: tokenFor(UserRole.Admin) } });
+
+    expect(await gateway.authenticate(client)).toBe('Unauthorized');
+    expect(client.data.user).toBeUndefined();
+  });
+
+  it('refuses an admin token once the account is no longer an admin', async () => {
+    const { gateway } = build(
+      jest.fn().mockResolvedValue({ id: 'u-1', email: 'a@b.c', role: UserRole.User }),
+    );
+    const client = mockSocket({ auth: { token: tokenFor(UserRole.Admin) } });
+
+    expect(await gateway.authenticate(client)).toBe('Forbidden');
+  });
+
+  it('wires authentication into the namespace middleware', async () => {
     const { gateway } = build();
     let middleware: (client: Socket, next: (err?: Error) => void) => void;
     gateway.afterInit({ use: (fn: typeof middleware) => (middleware = fn) } as any);
 
     const next = jest.fn();
     middleware(mockSocket({ auth: { token: tokenFor(UserRole.User) } }), next);
+    await new Promise(setImmediate);
     expect(next).toHaveBeenCalledWith(new Error('Forbidden'));
 
     next.mockClear();
     middleware(mockSocket({ auth: { token: tokenFor(UserRole.Admin) } }), next);
+    await new Promise(setImmediate);
     expect(next).toHaveBeenCalledWith(undefined);
   });
 
-  it('admits an admin via auth.token and joins the admins room', () => {
+  it('admits an admin via auth.token and joins the admins room', async () => {
     const { gateway } = build();
     const client = mockSocket({ auth: { token: tokenFor(UserRole.Admin) } });
 
-    expect(gateway.authenticate(client)).toBeNull();
+    expect(await gateway.authenticate(client)).toBeNull();
     gateway.handleConnection(client);
 
     expect(client.join).toHaveBeenCalledWith(ADMINS_ROOM);
@@ -91,13 +117,13 @@ describe('AdminOrdersGateway', () => {
     gateway.handleDisconnect(client);
   });
 
-  it('admits an admin via the Authorization header', () => {
+  it('admits an admin via the Authorization header', async () => {
     const { gateway } = build();
     const client = mockSocket({
       headers: { authorization: `Bearer ${tokenFor(UserRole.Admin)}` },
     });
 
-    expect(gateway.authenticate(client)).toBeNull();
+    expect(await gateway.authenticate(client)).toBeNull();
   });
 
   it('drops a connection that skipped authentication', () => {
@@ -110,12 +136,12 @@ describe('AdminOrdersGateway', () => {
     expect(client.join).not.toHaveBeenCalled();
   });
 
-  it('disconnects the admin once the token expires', () => {
-    jest.useFakeTimers();
+  it('disconnects the admin once the token expires', async () => {
     const { gateway } = build();
     const client = mockSocket({ auth: { token: tokenFor(UserRole.Admin, 60) } });
 
-    gateway.authenticate(client);
+    await gateway.authenticate(client);
+    jest.useFakeTimers();
     gateway.handleConnection(client);
     expect(client.disconnect).not.toHaveBeenCalled();
 

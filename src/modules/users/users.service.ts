@@ -1,20 +1,30 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { BcryptService } from '../../utils/bcrypt/bcrypt.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { CreateCourierDto } from './dto/create-courier.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UserEntity } from './entities/user.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository } from 'typeorm';
+import { Brackets, In, Not, Repository } from 'typeorm';
 import { plainToInstance } from 'class-transformer';
 import { ResponseUserDto } from './dto/response-user.dto';
 import { SearchUsersDto } from './dto/search-users.dto';
 import { OrderEntity } from '@modules/orders/entities/order.entity';
 import { OrderStatus } from '@common/enums/Order';
 import { UserRole } from '@common/enums/UserRole';
+import { UserStatus } from '@common/enums/UserStatus';
 import { ProductEntity } from '@modules/products/entities/product.entity';
 import { MailService } from '../../mail/mail.service';
 import { normalizePhone } from '../../utils/phone/normalize-phone';
+import { normalizeEmail } from '../../utils/email/normalize-email';
+
+const SALT_ROUNDS = 10;
 
 @Injectable()
 export class UsersService {
@@ -26,18 +36,34 @@ export class UsersService {
     private readonly mailService: MailService,
   ) {}
 
+  /**
+   * Register an account. A guest who already checked out with this email is
+   * upgraded in place, so they keep their order history.
+   */
   async create(user: CreateUserDto) {
-    const existingUser = await this.findOneByEmail(user.email);
+    const email = normalizeEmail(user.email);
+    const existingUser = await this.userRepository.findOne({ where: { email } });
+    const isGuest = existingUser && !existingUser.registered && existingUser.status === UserStatus.Active;
 
-    if (existingUser) {
+    if (existingUser && !isGuest) {
       throw new BadRequestException('email already exists');
     }
 
     const phone = normalizePhone(user.phone);
-    await this.assertPhoneAvailable(phone);
+    await this.assertPhoneAvailable(phone, existingUser?.id);
 
-    const hashedPassword = await this.bcryptService.hashPassword(user.password, 10);
-    const newUser = new UserEntity({ ...user, phone, password: hashedPassword });
+    const hashedPassword = await this.bcryptService.hashPassword(user.password, SALT_ROUNDS);
+    const fields: Partial<UserEntity> = {
+      email,
+      firstName: user.firstName,
+      lastName: user.lastName ?? '',
+      phone,
+      dateOfBirth: user.dateOfBirth ?? existingUser?.dateOfBirth ?? null,
+      password: hashedPassword,
+      passwordChangedAt: new Date(),
+      registered: true,
+    };
+    const newUser = isGuest ? Object.assign(existingUser, fields) : new UserEntity(fields);
 
     try {
       await this.userRepository.save(newUser);
@@ -55,7 +81,10 @@ export class UsersService {
   }
 
   async findAll(): Promise<ResponseUserDto[]> {
-    const users = await this.userRepository.find({ order: { createdAt: 'DESC' } });
+    const users = await this.userRepository.find({
+      where: { status: Not(UserStatus.Deleted) },
+      order: { createdAt: 'DESC' },
+    });
     return plainToInstance(ResponseUserDto, users);
   }
 
@@ -70,6 +99,7 @@ export class UsersService {
   async search({ q, limit = 20 }: SearchUsersDto): Promise<ResponseUserDto[]> {
     const qb = this.userRepository
       .createQueryBuilder('user')
+      .where('user.status != :deleted', { deleted: UserStatus.Deleted })
       .orderBy('user.createdAt', 'DESC')
       .take(limit);
 
@@ -102,12 +132,12 @@ export class UsersService {
    * Create a dedicated courier account (admin only).
    *
    * Always forces the COURIER role regardless of the payload and stores a
-   * hashed password. Couriers are considered registered accounts.
+   * hashed password. Couriers are registered accounts whose contacts the
+   * admin vouches for, so they start out verified.
    */
   async createCourier(courier: CreateCourierDto): Promise<ResponseUserDto> {
-    const existingUser = await this.userRepository.findOne({
-      where: { email: courier.email },
-    });
+    const email = normalizeEmail(courier.email);
+    const existingUser = await this.userRepository.findOne({ where: { email } });
 
     if (existingUser) {
       throw new BadRequestException('email already exists');
@@ -116,18 +146,20 @@ export class UsersService {
     const phone = normalizePhone(courier.phone);
     await this.assertPhoneAvailable(phone);
 
-    const hashedPassword = await this.bcryptService.hashPassword(
-      courier.password,
-      10,
-    );
+    const hashedPassword = await this.bcryptService.hashPassword(courier.password, SALT_ROUNDS);
+    const now = new Date();
 
     const newCourier = new UserEntity({
-      ...courier,
+      firstName: courier.firstName,
+      lastName: courier.lastName ?? '',
+      email,
       phone,
       password: hashedPassword,
+      passwordChangedAt: now,
       role: UserRole.Courier,
-      smsVerified: true,
       registered: true,
+      emailVerifiedAt: now,
+      phoneVerifiedAt: now,
     });
 
     try {
@@ -139,24 +171,18 @@ export class UsersService {
   }
 
   /**
-   * List all courier accounts for admin UI dropdowns.
+   * List active courier accounts for admin UI dropdowns.
    */
   async getCouriers(): Promise<ResponseUserDto[]> {
     const couriers = await this.userRepository.find({
-      where: { role: UserRole.Courier },
+      where: { role: UserRole.Courier, status: UserStatus.Active },
       order: { firstName: 'ASC' },
     });
     return plainToInstance(ResponseUserDto, couriers);
   }
 
   async findOne(id: string): Promise<ResponseUserDto> {
-    const user = await this.userRepository.findOne({ where: { id } });
-    return plainToInstance(ResponseUserDto, user);
-  }
-
-  async findOneByEmail(email: string): Promise<ResponseUserDto> {
-    const user = await this.userRepository.findOne({ where: { email } });
-    return plainToInstance(ResponseUserDto, user);
+    return plainToInstance(ResponseUserDto, await this.getUserOrFail(id));
   }
 
   /**
@@ -171,23 +197,28 @@ export class UsersService {
     }
   }
 
+  /** Loads a user that has not been deleted, or throws 404. */
+  private async getUserOrFail(id: string, relations: string[] = []): Promise<UserEntity> {
+    const user = await this.userRepository.findOne({ where: { id }, relations });
+
+    if (!user || user.status === UserStatus.Deleted) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
+  }
+
   // Favourites related methods
   async getFavourites(userId: string): Promise<ProductEntity[]> {
-    const user = await this.userRepository.findOne({ where: { id: userId }, relations: ['favourites'] });
-    if (!user) throw new NotFoundException('User not found');
+    const user = await this.getUserOrFail(userId, ['favourites']);
     return user.favourites || [];
   }
 
   async addFavourites(userId: string, productIds: string[]): Promise<ProductEntity[]> {
-    if (!Array.isArray(productIds) || productIds.length === 0) {
-      throw new BadRequestException('productIds must be a non-empty array');
-    }
-
-    const user = await this.userRepository.findOne({ where: { id: userId }, relations: ['favourites'] });
-    if (!user) throw new NotFoundException('User not found');
+    const user = await this.getUserOrFail(userId, ['favourites']);
 
     // Load products and validate existence
-    const products = await this.productRepo.findByIds(productIds);
+    const products = await this.productRepo.findBy({ id: In(productIds) });
     const foundIds = new Set(products.map((p) => p.id));
     const missing = productIds.filter((id) => !foundIds.has(id));
     if (missing.length > 0) {
@@ -212,8 +243,7 @@ export class UsersService {
   }
 
   async removeFavourite(userId: string, productId: string): Promise<ProductEntity[]> {
-    const user = await this.userRepository.findOne({ where: { id: userId }, relations: ['favourites'] });
-    if (!user) throw new NotFoundException('User not found');
+    const user = await this.getUserOrFail(userId, ['favourites']);
 
     user.favourites = (user.favourites || []).filter((p) => p.id !== productId);
 
@@ -226,24 +256,26 @@ export class UsersService {
     return user.favourites;
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto): Promise<string> {
-    // I need to allow adding dateOfBirth only once
-    const user = await this.userRepository.findOne({ where: { id } });
-
-    if (!user) {
-      throw new BadRequestException('User not found');
-    }
-
-    const { email, dateOfBirth, ...allowedUpdates } = updateUserDto;
+  async update(id: string, updateProfileDto: UpdateProfileDto): Promise<string> {
+    const user = await this.getUserOrFail(id);
+    // Picked explicitly rather than spread, so nothing but profile fields can
+    // reach the entity even if validation whitelisting is ever turned off.
+    const { firstName, lastName, phone, dateOfBirth } = updateProfileDto;
+    const allowedUpdates: Partial<UserEntity> = Object.fromEntries(
+      Object.entries({ firstName, lastName, phone }).filter(([, v]) => v !== undefined),
+    );
 
     if (allowedUpdates.phone) {
       allowedUpdates.phone = normalizePhone(allowedUpdates.phone);
 
       if (allowedUpdates.phone !== user.phone) {
         await this.assertPhoneAvailable(allowedUpdates.phone, id);
+        // A new number has not been verified yet.
+        user.phoneVerifiedAt = null;
       }
     }
 
+    // Date of birth drives birthday promos, so it can only be set once.
     if (dateOfBirth && !user.dateOfBirth) {
       Object.assign(user, { dateOfBirth, ...allowedUpdates });
     } else {
@@ -258,10 +290,91 @@ export class UsersService {
     }
   }
 
+  /**
+   * Block or unblock an account (admin only). Blocking revokes every token
+   * the user holds. Admin accounts cannot be blocked from the API, which also
+   * keeps an admin from locking themselves out.
+   */
+  async setStatus(id: string, { status, reason }: UpdateUserStatusDto): Promise<ResponseUserDto> {
+    const user = await this.getUserOrFail(id);
+
+    if (user.role === UserRole.Admin) {
+      throw new BadRequestException('admin accounts cannot be blocked');
+    }
+
+    if (user.status !== status) {
+      user.status = status;
+
+      if (status === UserStatus.Blocked) {
+        user.blockedAt = new Date();
+        user.blockedReason = reason ?? null;
+        user.tokenVersion += 1;
+      } else {
+        user.blockedAt = null;
+        user.blockedReason = null;
+      }
+
+      await this.userRepository.save(user);
+    }
+
+    return plainToInstance(ResponseUserDto, user);
+  }
+
+  /**
+   * Self-service account deletion. Accounts with a password must confirm it,
+   * so a stolen access token alone cannot erase the account.
+   */
+  async deleteOwnAccount(userId: string, password?: string): Promise<string> {
+    const user = await this.getUserOrFail(userId, ['favourites']);
+
+    if (user.password) {
+      const isValid = password && (await this.bcryptService.verifyPassword(password, user.password));
+      if (!isValid) throw new UnauthorizedException('invalid password');
+    }
+
+    return this.anonymize(user);
+  }
+
   async remove(id: string): Promise<string> {
-    const deleted = await this.userRepository.delete(id);
-    if (deleted.affected < 1) throw new BadRequestException('user was not deleted');
-    return `user ${id} was deleted successfully`;
+    const user = await this.getUserOrFail(id, ['favourites']);
+
+    if (user.role === UserRole.Admin) {
+      throw new BadRequestException('admin accounts cannot be deleted');
+    }
+
+    return this.anonymize(user);
+  }
+
+  /**
+   * "Deletes" an account by wiping its personal data. The row itself stays,
+   * because orders reference it and must keep showing up in reports.
+   * Expects `favourites` to be loaded so the join rows get removed.
+   */
+  private async anonymize(user: UserEntity): Promise<string> {
+    Object.assign(user, {
+      status: UserStatus.Deleted,
+      deletedAt: new Date(),
+      email: `deleted-${user.id}@deleted.invalid`,
+      firstName: 'Deleted',
+      lastName: 'User',
+      phone: null,
+      password: null,
+      dateOfBirth: null,
+      emailVerifiedAt: null,
+      phoneVerifiedAt: null,
+      passwordResetTokenHash: null,
+      passwordResetExpiresAt: null,
+      favourites: [],
+      tokenVersion: user.tokenVersion + 1,
+    });
+
+    try {
+      await this.userRepository.save(user);
+    } catch (e) {
+      throw new BadRequestException('user was not deleted');
+    }
+
+    return `user ${user.id} was deleted successfully`;
   }
 
   async getOrderHistory(userId: string, status?: OrderStatus) {

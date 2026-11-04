@@ -27,6 +27,8 @@ import {
 } from '@common/enums/Order';
 import { MailService } from '../../mail/mail.service';
 import { AdminOrdersGateway } from '@modules/notifications/admin-orders.gateway';
+import { normalizeEmail } from '../../utils/email/normalize-email';
+import { normalizePhone } from '../../utils/phone/normalize-phone';
 
 @Injectable()
 export class OrdersService {
@@ -225,13 +227,14 @@ export class OrdersService {
       newOrder.user = { id: userId } as any;
     } else {
       // Guest order — resolve or create a guest UserEntity
-      const { email, firstName, lastName } = order;
-      if (!email || !firstName || !lastName) {
+      const { firstName, lastName } = order;
+      if (!order.email || !firstName || !lastName) {
         throw new BadRequestException(
           'firstName, lastName and email are required for guest orders',
         );
       }
 
+      const email = normalizeEmail(order.email);
       let guestUser = await this.usersRepo.findOne({ where: { email } });
 
       if (guestUser) {
@@ -241,14 +244,18 @@ export class OrdersService {
           );
         }
       } else {
+        // The phone is unique per account; if someone else already owns it,
+        // the guest goes without — the order keeps its own phone anyway.
+        const phone = normalizePhone(order.phone);
+        const phoneTaken = await this.usersRepo.exists({ where: { phone } });
+
         guestUser = this.usersRepo.create({
           email,
           firstName,
           lastName,
-          phone: order.phone,
+          phone: phoneTaken ? null : phone,
           password: null,
           role: UserRole.User,
-          smsVerified: false,
           registered: false,
         });
         await this.usersRepo.save(guestUser);

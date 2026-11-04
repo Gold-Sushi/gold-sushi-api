@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -10,12 +11,15 @@ import { MoreThan, Repository } from 'typeorm';
 import { createHash, randomBytes } from 'crypto';
 import { resolveSiteDomain, siteUrl } from '@common/site.constants';
 import { UserEntity } from '@modules/users/entities/user.entity';
+import { UserStatus } from '@common/enums/UserStatus';
 import { BcryptService } from '../../utils/bcrypt/bcrypt.service';
+import { normalizeEmail } from '../../utils/email/normalize-email';
 import { MailService } from '../../mail/mail.service';
 import {
   PASSWORD_RESET_GENERIC_MESSAGE,
   PASSWORD_RESET_TTL_MINUTES,
 } from './password.constants';
+import { JwtPayload } from './session.service';
 
 const SALT_ROUNDS = 10;
 
@@ -29,8 +33,10 @@ export class AuthService {
     private readonly configService: ConfigService,
   ) {}
 
-  async validateUser(email: string, pass: string): Promise<any> {
-    const user = await this.userRepository.findOne({ where: { email } });
+  async validateUser(email: string, pass: string): Promise<UserEntity | null> {
+    const user = await this.userRepository.findOne({
+      where: { email: normalizeEmail(email) },
+    });
 
     if (!user) {
       return null;
@@ -46,22 +52,35 @@ export class AuthService {
       user.password,
     );
 
-    if (isValid) {
-      return user;
+    if (!isValid) {
+      return null;
     }
 
-    return null;
+    // Only after the password matched, so this does not reveal the account.
+    if (user.status === UserStatus.Blocked) {
+      throw new ForbiddenException('Обліковий запис заблоковано');
+    }
+
+    return user.status === UserStatus.Active ? user : null;
   }
 
-  login(user: any) {
+  async login(user: UserEntity) {
     const { id, email, role } = user;
+
+    await this.userRepository.update(id, { lastLoginAt: new Date() });
 
     return {
       id,
       email,
       role,
-      access_token: this.jwtService.sign({ id, email, role }),
+      access_token: this.issueToken(user),
     };
+  }
+
+  /** Signs an access token bound to the user's current token version. */
+  private issueToken({ id, email, role, tokenVersion }: UserEntity): string {
+    const payload: JwtPayload = { id, email, role, tv: tokenVersion };
+    return this.jwtService.sign(payload);
   }
 
   /**
@@ -71,10 +90,12 @@ export class AuthService {
    * registered would turn this endpoint into an account enumeration oracle.
    */
   async forgotPassword(email: string): Promise<{ message: string }> {
-    const user = await this.userRepository.findOne({ where: { email } });
+    const user = await this.userRepository.findOne({
+      where: { email: normalizeEmail(email) },
+    });
 
     // Guests (no password) have nothing to reset — they need to register.
-    if (user?.password) {
+    if (user?.password && user.status === UserStatus.Active) {
       const token = randomBytes(32).toString('hex');
 
       user.passwordResetTokenHash = this.hashToken(token);
@@ -113,17 +134,22 @@ export class AuthService {
       SALT_ROUNDS,
     );
     this.clearResetToken(user);
+    this.revokeSessions(user);
 
     await this.userRepository.save(user);
 
     return { message: 'Пароль успішно змінено' };
   }
 
+  /**
+   * Signs out every other session. The response carries a fresh token so
+   * the session that made the change stays logged in.
+   */
   async changePassword(
     userId: string,
     currentPassword: string,
     newPassword: string,
-  ): Promise<{ message: string }> {
+  ): Promise<{ message: string; access_token: string }> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
 
     if (!user?.password) {
@@ -151,10 +177,14 @@ export class AuthService {
     );
     // A pending reset link is obsolete once the password changes by hand.
     this.clearResetToken(user);
+    this.revokeSessions(user);
 
     await this.userRepository.save(user);
 
-    return { message: 'Пароль успішно змінено' };
+    return {
+      message: 'Пароль успішно змінено',
+      access_token: this.issueToken(user),
+    };
   }
 
   /**
@@ -180,6 +210,12 @@ export class AuthService {
   private clearResetToken(user: UserEntity): void {
     user.passwordResetTokenHash = null;
     user.passwordResetExpiresAt = null;
+  }
+
+  /** Invalidates every token issued before the password changed. */
+  private revokeSessions(user: UserEntity): void {
+    user.passwordChangedAt = new Date();
+    user.tokenVersion += 1;
   }
 
   private buildResetUrl(token: string): string {

@@ -65,7 +65,8 @@ not match the order total and someone needs to check it by hand.
 ## 3. Errors & reconnection
 
 ```ts
-// Refused at connect time: no token / invalid token → 'Unauthorized',
+// Refused at connect time: no token / invalid token / revoked session
+// (password changed, account blocked) → 'Unauthorized',
 // valid token without ADMIN role → 'Forbidden'.
 socket.on('connect_error', (err) => {
   if (err.message === 'Unauthorized') {

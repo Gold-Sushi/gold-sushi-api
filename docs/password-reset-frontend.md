@@ -130,7 +130,8 @@ ambiguous case from ever reaching the user.
 
 **What to do next on success:** show a success toast and **redirect to
 `/login`**. This endpoint returns no `access_token`, so the user is not logged
-in. Proceed to step A3.
+in. A successful reset also signs out every existing session of that account.
+Proceed to step A3.
 
 **What to do next on a string-shaped `400`:** replace the form with
 "Посилання недійсне або застаріле" plus a link back to `/forgot-password`. Do
@@ -188,7 +189,7 @@ Content-Type: application/json
 **Success — `201`:**
 
 ```json
-{ "message": "Пароль успішно змінено" }
+{ "message": "Пароль успішно змінено", "access_token": "eyJhbGciOi…" }
 ```
 
 **Failures:**
@@ -200,8 +201,10 @@ Content-Type: application/json
 | `400` (array) | New password outside 8–72 chars | Field-level error |
 | `429` | 6th request within a minute | "Забагато спроб. Спробуйте за хвилину." |
 
-**What to do next:** show the success message. The user's session stays valid —
-do not log them out or refresh the token.
+**What to do next:** show the success message and **replace the stored token
+with the `access_token` from the response**. Changing the password signs out
+every session, including this one: the old token returns `401` from now on.
+The new token keeps the user logged in here.
 
 **Why `currentPassword` is required at all:** it means a stolen `access_token`
 alone cannot be used to take over the account. Do not add a "skip if already

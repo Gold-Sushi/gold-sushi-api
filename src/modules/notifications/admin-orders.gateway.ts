@@ -9,6 +9,7 @@ import {
 } from '@nestjs/websockets';
 import { Namespace, Socket } from 'socket.io';
 import { UserRole } from '@common/enums/UserRole';
+import { JwtPayload, SessionService } from '@common/auth/session.service';
 import { OrderEntity } from '@modules/orders/entities/order.entity';
 import { AdminOrderNotificationDto } from './dto/admin-order-notification.dto';
 
@@ -39,42 +40,52 @@ export class AdminOrdersGateway
   @WebSocketServer()
   server: Namespace;
 
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly sessionService: SessionService,
+  ) {}
 
   afterInit(namespace: Namespace) {
     namespace.use((client, next) => {
-      const error = this.authenticate(client);
-      next(error ? new Error(error) : undefined);
+      this.authenticate(client).then(
+        (error) => next(error ? new Error(error) : undefined),
+        () => next(new Error('Unauthorized')),
+      );
     });
   }
 
   /**
-   * Verifies the handshake token and stores the admin on `client.data.user`.
+   * Verifies the handshake token, checks the session is still live (not
+   * blocked or revoked) and stores the admin on `client.data.user`.
    * Returns the rejection reason, or null when the client is an admin.
    */
-  authenticate(client: Socket): string | null {
+  async authenticate(client: Socket): Promise<string | null> {
     const token = this.extractToken(client);
     if (!token) {
       return 'Unauthorized';
     }
 
-    let payload: { id: string; email: string; role: UserRole; exp?: number };
+    let payload: JwtPayload;
     try {
       payload = this.jwtService.verify(token);
     } catch {
       return 'Unauthorized';
     }
 
+    // Cheap check first, so non-admins never cost a database lookup.
     if (payload.role !== UserRole.Admin) {
       return 'Forbidden';
     }
 
-    client.data.user = {
-      id: payload.id,
-      email: payload.email,
-      role: payload.role,
-      exp: payload.exp,
-    };
+    const session = await this.sessionService.resolveSession(payload);
+    if (!session) {
+      return 'Unauthorized';
+    }
+    if (session.role !== UserRole.Admin) {
+      return 'Forbidden';
+    }
+
+    client.data.user = { ...session, exp: payload.exp };
     return null;
   }
 
