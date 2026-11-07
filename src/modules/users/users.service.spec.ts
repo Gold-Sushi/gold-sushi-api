@@ -37,8 +37,10 @@ function build(rows: { email?: UserEntity; phone?: UserEntity; id?: UserEntity }
       if (where.id) return rows.id ?? null;
       return null;
     }),
+    exists: jest.fn(async ({ where }) => !!rows.id && rows.id.id === where.id),
     save: jest.fn(async (u) => u),
   };
+  const ordersRepo = { find: jest.fn(async () => [{ id: 'o-1' }]) };
   const bcryptService = {
     hashPassword: jest.fn(async (p: string) => `hashed:${p}`),
     verifyPassword: jest.fn(async (p: string, h: string) => h === `hashed:${p}`),
@@ -47,13 +49,13 @@ function build(rows: { email?: UserEntity; phone?: UserEntity; id?: UserEntity }
 
   const service = new UsersService(
     userRepository as unknown as Repository<UserEntity>,
-    {} as any,
+    ordersRepo as any,
     {} as any,
     bcryptService as unknown as BcryptService,
     mailService as unknown as MailService,
   );
 
-  return { service, userRepository };
+  return { service, userRepository, ordersRepo };
 }
 
 const registration = {
@@ -209,6 +211,32 @@ describe('UsersService', () => {
     it('admins cannot be deleted through the admin route', async () => {
       const { service } = build({ id: userRow({ role: UserRole.Admin }) });
       await expect(service.remove('u-1')).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('getUserOrders', () => {
+    it('returns the orders of that user with their lines, newest first', async () => {
+      const { service, ordersRepo } = build({ id: userRow() });
+
+      await expect(service.getUserOrders('u-1')).resolves.toEqual([{ id: 'o-1' }]);
+      expect(ordersRepo.find).toHaveBeenCalledWith({
+        where: { user: { id: 'u-1' } },
+        relations: ['items', 'items.product', 'assignedCourier'],
+        order: { createdAt: 'DESC' },
+      });
+    });
+
+    it('still returns the orders of a deleted account', async () => {
+      const { service } = build({ id: userRow({ status: UserStatus.Deleted }) });
+
+      await expect(service.getUserOrders('u-1')).resolves.toEqual([{ id: 'o-1' }]);
+    });
+
+    it('404s for an unknown user instead of returning an empty list', async () => {
+      const { service, ordersRepo } = build();
+
+      await expect(service.getUserOrders('missing')).rejects.toThrow(NotFoundException);
+      expect(ordersRepo.find).not.toHaveBeenCalled();
     });
   });
 });

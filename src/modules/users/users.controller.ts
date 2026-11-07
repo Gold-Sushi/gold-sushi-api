@@ -106,6 +106,16 @@ export class UsersController {
   }
 
   @AdminOnly()
+  @Get(':id/orders')
+  @ApiOperation({
+    summary: 'List all orders of a user',
+    description: 'Requires a Bearer JWT with the ADMIN role. Returns every order with its lines, newest first; deleted accounts keep their orders.',
+  })
+  getUserOrders(@Param('id', ParseUUIDPipe) id: string) {
+    return this.usersService.getUserOrders(id);
+  }
+
+  @AdminOnly()
   @Get(':id')
   @ApiOperation({ summary: 'Get a user by id', description: 'Requires a Bearer JWT with the ADMIN role.' })
   findOne(@Param('id', ParseUUIDPipe) id: string): Promise<ResponseUserDto> {

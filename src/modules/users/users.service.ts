@@ -392,6 +392,24 @@ export class UsersService {
     return user?.orders || [];
   }
 
+  /**
+   * Every order of a user with its lines, newest first (admin view). Deleted
+   * accounts still resolve: they are anonymized but keep their orders.
+   */
+  async getUserOrders(userId: string) {
+    const exists = await this.userRepository.exists({ where: { id: userId } });
+
+    if (!exists) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.ordersRepo.find({
+      where: { user: { id: userId } },
+      relations: ['items', 'items.product', 'assignedCourier'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   async getOrderHistoryItem(userId: string, orderId: string) {
     const order = await this.ordersRepo.findOne({
       where: {
